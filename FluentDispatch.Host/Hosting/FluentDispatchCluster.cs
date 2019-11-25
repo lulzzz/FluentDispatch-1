@@ -63,12 +63,12 @@ namespace FluentDispatch.Host.Hosting
                     else
                     {
                         var listeningPort =
-                            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GCD_CLUSTER_LISTENING_PORT"))
-                                ? (int.TryParse(Environment.GetEnvironmentVariable("GCD_CLUSTER_LISTENING_PORT"),
+                            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("FLUENTDISPATCH_CLUSTER_LISTENING_PORT"))
+                                ? (int.TryParse(Environment.GetEnvironmentVariable("FLUENTDISPATCH_CLUSTER_LISTENING_PORT"),
                                     out var parsedPort)
                                     ? parsedPort
-                                    : hostingContext.Configuration.GetValue<int>("GCD_CLUSTER_LISTENING_PORT"))
-                                : hostingContext.Configuration.GetValue<int>("GCD_CLUSTER_LISTENING_PORT");
+                                    : hostingContext.Configuration.GetValue<int>("FLUENTDISPATCH_CLUSTER_LISTENING_PORT"))
+                                : hostingContext.Configuration.GetValue<int>("FLUENTDISPATCH_CLUSTER_LISTENING_PORT");
                         options.Listen(IPAddress.Any, listeningPort);
                     }
                 });

@@ -51,12 +51,12 @@ namespace FluentDispatch.Host.Hosting
                 new List<ServerPort>
                 {
                     new ServerPort(IPAddress.Any.ToString(),
-                        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GCD_NODE_LISTENING_PORT"))
-                            ? (int.TryParse(Environment.GetEnvironmentVariable("GCD_NODE_LISTENING_PORT"),
+                        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("FLUENTDISPATCH_NODE_LISTENING_PORT"))
+                            ? (int.TryParse(Environment.GetEnvironmentVariable("FLUENTDISPATCH_NODE_LISTENING_PORT"),
                                 out var port)
                                 ? port
-                                : configuration.GetValue<int>("GCD_NODE_LISTENING_PORT"))
-                            : configuration.GetValue<int>("GCD_NODE_LISTENING_PORT"), ServerCredentials.Insecure)
+                                : configuration.GetValue<int>("FLUENTDISPATCH_NODE_LISTENING_PORT"))
+                            : configuration.GetValue<int>("FLUENTDISPATCH_NODE_LISTENING_PORT"), ServerCredentials.Insecure)
                 },
                 new MagicOnionOptions(true)
                 {
