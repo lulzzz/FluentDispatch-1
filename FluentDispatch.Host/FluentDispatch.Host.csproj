@@ -14,8 +14,8 @@
     <PackageReference Include="Serilog.Sinks.File" Version="4.1.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="3.0.1" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="3.0.0" />
-    <PackageReference Include="MagicOnion" Version="2.6.3" />
-    <PackageReference Include="MagicOnion.Hosting" Version="2.6.3" />
+    <PackageReference Include="MagicOnion" Version="2.6.4" />
+    <PackageReference Include="MagicOnion.Hosting" Version="2.6.4" />
   </ItemGroup>
 
   <ItemGroup>
