@@ -1,7 +1,7 @@
 version: "3.7"
 services:
   cluster:
-    container_name: fluentdispatchcluster
+    container_name: fluentdispatch-cluster
     environment:
       INFLUXDB: "http://192.168.2.10:8086"
       FLUENTDISPATCH_CLUSTER_LISTENING_PORT: 5432
@@ -16,7 +16,7 @@ services:
       - fluentdispatch-network
   grafana:
     build: './grafana'
-    container_name: grafana
+    container_name: fluentdispatch-grafana
     restart: always
     image: grafana
     ports:
@@ -32,8 +32,8 @@ services:
     networks:
       - fluentdispatch-network
   influxdb:
+    container_name: fluentdispatch-influxdb
     image: influxdb
-    container_name: influxdb
     restart: always
     ports:
       - "8086:8086"
@@ -42,7 +42,7 @@ services:
     networks:
       - fluentdispatch-network
   elasticsearch:
-    container_name: elasticsearch
+    container_name: fluentdispatch-elasticsearch
     build:
       context: elk/elasticsearch/
       args:
@@ -65,7 +65,7 @@ services:
     networks:
       - fluentdispatch-network
   logstash:
-    container_name: logstash
+    container_name: fluentdispatch-logstash
     build:
       context: elk/logstash/
       args:
@@ -90,7 +90,7 @@ services:
     depends_on:
       - elasticsearch
   kibana:
-    container_name: kibana
+    container_name: fluentdispatch-kibana
     build:
       context: elk/kibana/
       args:

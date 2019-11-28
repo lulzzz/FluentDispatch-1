@@ -296,8 +296,8 @@ The goal is to send POST requests to the cluster (http://localhost:5432/api/sent
 
 ```
 {
-	'Title': 'Avatar',
-	'ReviewText': 'good movie!'
+	"Title": "Avatar",
+	"ReviewText": "good movie!"
 }
 ```
 
@@ -316,7 +316,7 @@ ElasticSearch is automatically deployed through Docker as well as the Node, Clus
 
 After cloning this repository, you only need to execute this [script](https://github.com/bbougot/FluentDispatch/blob/master/Samples/Remote/DockerSetup.cmd) in Windows or this [script](https://github.com/bbougot/FluentDispatch/blob/master/Samples/Remote/DockerSetup.sh) if running Unix/Linux/macOS environments. Make sure you're using the latest version of Docker/Docker Compose.
 
-The results of each request is then accessible through Kibana under the index `sentiment` (http://localhost:5601) and monitoring is available through Grafana (http://localhost:3000).
+The results of each request is then accessible through Kibana (user: elastic / password: admin) under the index `sentiment` (http://localhost:5601) and monitoring is available through Grafana (http://localhost:3000).
 
 This sample demonstrates the ability to dispatch a workload to remote machines in order to guarantee a high availability. It works similarly to a load-balancer, but on the application level.
 
