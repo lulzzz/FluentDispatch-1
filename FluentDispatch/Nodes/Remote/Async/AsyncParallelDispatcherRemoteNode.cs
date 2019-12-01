@@ -61,6 +61,11 @@ namespace FluentDispatch.Nodes.Remote.Async
         private readonly IDisposable _remoteNodeHealthSubscription;
 
         /// <summary>
+        /// RPC channel
+        /// </summary>
+        private readonly Channel _channel;
+
+        /// <summary>
         /// <see cref="AsyncParallelDispatcherRemoteNode{TInput,TOutput}"/>
         /// </summary>
         /// <param name="host"><see cref="Host"/></param>
@@ -99,16 +104,16 @@ namespace FluentDispatch.Nodes.Remote.Async
         {
             _logger = logger;
             _clusterOptions = clusterOptions;
-            var channel = new Channel(host.MachineName, host.Port,
+            _channel = new Channel(host.MachineName, host.Port,
                 ChannelCredentials.Insecure);
-            _remoteContract = MagicOnionClient.Create<IOutputRemoteContract<TInput, TOutput>>(channel);
+            _remoteContract = MagicOnionClient.Create<IOutputRemoteContract<TInput, TOutput>>(_channel);
             IRemoteNodeSubject nodeReceiver = new NodeReceiver(_logger);
             _remoteNodeHealthSubscription =
                 nodeReceiver.RemoteNodeHealthSubject.Subscribe(remoteNodeHealth =>
                 {
                     NodeMetrics.RemoteNodeHealth = remoteNodeHealth;
                 });
-            _nodeHub = StreamingHubClient.Connect<INodeHub, INodeReceiver>(channel, (INodeReceiver) nodeReceiver);
+            _nodeHub = StreamingHubClient.Connect<INodeHub, INodeReceiver>(_channel, (INodeReceiver) nodeReceiver);
             NodeMetrics = new NodeMetrics(Guid.NewGuid());
         }
 
@@ -235,6 +240,7 @@ namespace FluentDispatch.Nodes.Remote.Async
             if (disposing)
             {
                 _remoteNodeHealthSubscription?.Dispose();
+                _channel.ShutdownAsync().Wait();
             }
 
             _disposed = true;
