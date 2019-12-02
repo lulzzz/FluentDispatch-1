@@ -2,7 +2,6 @@
 using FluentDispatch.Contract.Helpers;
 using FluentDispatch.Contract.Models;
 using FluentDispatch.Contract.Models.ElasticSearch;
-using FluentDispatch.Contract.Models.Tensorflow;
 using FluentDispatch.Contract.Services.ElasticSearch;
 using MagicOnion;
 using MessagePack;

@@ -118,6 +118,11 @@ namespace FluentDispatch.Nodes.Remote.Dual
         private long _executorProcessedItems;
 
         /// <summary>
+        /// RPC channel
+        /// </summary>
+        private readonly Channel _channel;
+
+        /// <summary>
         /// <see cref="DualParallelDispatcherRemoteNode{TInput1,TInput2,TOutput1,TOutput2}"/>
         /// </summary>
         /// <param name="persistentCache">Persistent cache to avoid dropped data on system crash</param>
@@ -183,18 +188,18 @@ namespace FluentDispatch.Nodes.Remote.Dual
                 .Merge()
                 .Subscribe();
 
-            var channel = new Channel(host.MachineName, host.Port,
+            _channel = new Channel(host.MachineName, host.Port,
                 ChannelCredentials.Insecure);
-            _remoteContract = MagicOnionClient.Create<IRemoteContract<TOutput1, TOutput2>>(channel);
-            _item1RemoteContract = MagicOnionClient.Create<IOutputItem1RemoteContract<TInput1, TOutput1>>(channel);
-            _item2RemoteContract = MagicOnionClient.Create<IOutputItem2RemoteContract<TInput2, TOutput2>>(channel);
+            _remoteContract = MagicOnionClient.Create<IRemoteContract<TOutput1, TOutput2>>(_channel);
+            _item1RemoteContract = MagicOnionClient.Create<IOutputItem1RemoteContract<TInput1, TOutput1>>(_channel);
+            _item2RemoteContract = MagicOnionClient.Create<IOutputItem2RemoteContract<TInput2, TOutput2>>(_channel);
             IRemoteNodeSubject nodeReceiver = new NodeReceiver(_logger);
             _remoteNodeHealthSubscription =
                 nodeReceiver.RemoteNodeHealthSubject.Subscribe(remoteNodeHealth =>
                 {
                     NodeMetrics.RemoteNodeHealth = remoteNodeHealth;
                 });
-            _nodeHub = StreamingHubClient.Connect<INodeHub, INodeReceiver>(channel, (INodeReceiver) nodeReceiver);
+            _nodeHub = StreamingHubClient.Connect<INodeHub, INodeReceiver>(_channel, (INodeReceiver) nodeReceiver);
 
             NodeMetrics = new NodeMetrics(Guid.NewGuid());
 
@@ -668,6 +673,7 @@ namespace FluentDispatch.Nodes.Remote.Dual
                 _item1SynchronizedDispatcherSubjectSubscription?.Dispose();
                 _item2SynchronizedDispatcherSubjectSubscription?.Dispose();
                 _remoteNodeHealthSubscription?.Dispose();
+                _channel.ShutdownAsync().Wait();
             }
 
             _disposed = true;

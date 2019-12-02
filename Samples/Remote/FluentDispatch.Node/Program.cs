@@ -1,7 +1,6 @@
 ﻿using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using FluentDispatch.Host.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace FluentDispatch.Node
 {
@@ -9,7 +8,7 @@ namespace FluentDispatch.Node
     {
         static async Task Main(string[] args)
         {
-            using var host = FluentDispatchNode<Startup>.CreateDefaultBuilder(true, LogLevel.Information,
+            using var host = FluentDispatchNode<Startup>.CreateDefaultBuilder(
                     typeof(Contract.Resolvers.MetadataResolver),
                     typeof(Contract.Resolvers.SentimentPredictionResolver),
                     typeof(Contract.Resolvers.IndexerResolver))

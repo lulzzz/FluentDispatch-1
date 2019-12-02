@@ -1,15 +1,30 @@
 version: "3.7"
 services:
+  node:
+    container_name: fluentdispatch-node
+    environment:
+      FLUENTDISPATCH_NODE_LISTENING_PORT: 9090
+      ELASTICSEARCH_ENDPOINT: "http://elasticsearch:9200"
+    build:
+      context: ../../
+      dockerfile: Samples/Remote/FluentDispatch.Node/Dockerfile
+    image: fluentdispatch/node:v1
+    ports:
+      - "9090:9090"
+    networks:
+      - fluentdispatch-network
   cluster:
     container_name: fluentdispatch-cluster
     environment:
-      INFLUXDB: "http://192.168.2.10:8086"
+      INFLUXDB_ENDPOINT: "http://influxdb:8086"
       FLUENTDISPATCH_CLUSTER_LISTENING_PORT: 5432
-      FLUENTDISPATCH_CLUSTER_NODES: "[{'MachineName':'192.168.2.10','Port':9090}]"
+      FLUENTDISPATCH_CLUSTER_NODES: "[{'MachineName':'node','Port':9090}]"
     build:
-      context: ../../../
+      context: ../../
       dockerfile: Samples/Remote/FluentDispatch.Cluster/Dockerfile
     image: fluentdispatch/cluster:v1
+    depends_on:
+      - node
     ports:
       - "5432:5432"
     networks:
@@ -26,6 +41,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
       GF_INSTALL_PLUGINS: "grafana-piechart-panel"
+    depends_on:
+      - influxdb
     volumes:
       - grafana-volume:/var/lib/grafana
       - ./grafana/provisioning/:/etc/grafana/provisioning/
@@ -109,11 +126,8 @@ services:
       - elasticsearch
 volumes:
   grafana-volume:
-    external: true
   influxdb-volume:
-    external: true
   elasticsearch-volume:
-    external: true
 networks:
   fluentdispatch-network:
-    external: true
+    external: false

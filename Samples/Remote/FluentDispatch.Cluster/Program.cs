@@ -1,7 +1,6 @@
 ﻿using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using FluentDispatch.Host.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace FluentDispatch.Cluster
 {
@@ -9,7 +8,7 @@ namespace FluentDispatch.Cluster
     {
         static async Task Main(string[] args)
         {
-            using var host = FluentDispatchCluster<Startup>.CreateDefaultBuilder(true, LogLevel.Information, true)
+            using var host = FluentDispatchCluster<Startup>.CreateDefaultBuilder()
                 .Build();
             await host.RunAsync();
         }

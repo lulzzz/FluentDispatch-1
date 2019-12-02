@@ -18,22 +18,14 @@ namespace FluentDispatch.Contract.Services.ElasticSearch
         public ElasticSearchService(ILoggerFactory loggerFactory, IConfiguration configuration)
         {
             _logger = loggerFactory.CreateLogger<ElasticSearchService>();
-            var endpoint =
-                !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ELASTICSEARCH_ENDPOINT"))
-                    ? Environment.GetEnvironmentVariable("ELASTICSEARCH_ENDPOINT")
-                    : configuration.GetValue<string>("ELASTICSEARCH_ENDPOINT");
-            var pool = new SingleNodeConnectionPool(new Uri(endpoint));
-            var connSettings = new ConnectionSettings(pool)
-                .DefaultMappingFor<Review>(m => m
-                    .IndexName(Constants.ReviewIndexName)
-                )
-                .BasicAuthentication(configuration["ELASTICSEARCH_USER"], configuration["ELASTICSEARCH_PASSWORD"])
-                .IncludeServerStackTraceOnError()
-                .EnableHttpPipelining()
-                .EnableHttpCompression();
-
             Client = new Lazy<Task<IElasticClient>>(async () =>
             {
+                var pool = new SingleNodeConnectionPool(
+                    new Uri(configuration.GetValue<string>("ELASTICSEARCH_ENDPOINT")));
+                var connSettings = new ConnectionSettings(pool)
+                    .IncludeServerStackTraceOnError()
+                    .EnableHttpPipelining()
+                    .EnableHttpCompression();
                 var client = new ElasticClient(connSettings);
                 try
                 {
@@ -43,7 +35,8 @@ namespace FluentDispatch.Contract.Services.ElasticSearch
                                 .AutoMap()
                             );
 
-                    if (!(await client.Indices.ExistsAsync(Constants.ReviewIndexName)).Exists)
+                    var existResponse = await client.Indices.ExistsAsync(Constants.ReviewIndexName);
+                    if (!existResponse.Exists)
                     {
                         await client.Indices.CreateAsync(mapping);
                     }
