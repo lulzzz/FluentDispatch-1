@@ -47,9 +47,9 @@ namespace FluentDispatch.Extensions
         /// </summary>
         /// <typeparam name="TInput"></typeparam>
         /// <param name="services"><see cref="IServiceCollection"/></param>
-        /// <param name="resolver"><see cref="Resolver{TInput1}"/></param>
+        /// <param name="resolver"><see cref="FuncResolver{TInput1}"/></param>
         public static void AddCluster<TInput>(this IServiceCollection services,
-            Func<IServiceProvider, Resolver<TInput>> resolver)
+            Func<IServiceProvider, FuncResolver<TInput>> resolver)
         {
             services.TryAddSingleton(resolver);
             services.TryAddSingleton<ICluster<TInput>, Cluster<TInput>>();
