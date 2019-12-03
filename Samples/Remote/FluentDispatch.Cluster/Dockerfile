@@ -4,12 +4,15 @@ EXPOSE 5432
 
 FROM mcr.microsoft.com/dotnet/core/sdk:3.1-buster AS build
 WORKDIR /src
+COPY ["FluentDispatch.PerformanceCounters/FluentDispatch.PerformanceCounters.csproj", "FluentDispatch.PerformanceCounters/"]
+COPY ["FluentDispatch/FluentDispatch.csproj", "FluentDispatch/"]
+COPY ["FluentDispatch.Monitoring/FluentDispatch.Monitoring.csproj", "FluentDispatch.Monitoring/"]
+COPY ["FluentDispatch.Monitoring.InfluxDb/FluentDispatch.Monitoring.InfluxDb.csproj", "FluentDispatch.Monitoring.InfluxDb/"]
 COPY ["FluentDispatch.Host/FluentDispatch.Host.csproj", "FluentDispatch.Host/"]
+COPY ["FluentDispatch.Logging/FluentDispatch.Logging.csproj", "FluentDispatch.Logging/"]
+COPY ["FluentDispatch.Logging.Serilog/FluentDispatch.Logging.Serilog.csproj", "FluentDispatch.Logging.Serilog/"]
 COPY ["Samples/Remote/FluentDispatch.Cluster/FluentDispatch.Cluster.csproj", "Samples/Remote/FluentDispatch.Cluster/"]
 COPY ["Samples/Remote/FluentDispatch.Contract/FluentDispatch.Contract.csproj", "Samples/Remote/FluentDispatch.Contract/"]
-COPY ["FluentDispatch/FluentDispatch.csproj", "FluentDispatch/"]
-COPY ["FluentDispatch.PerformanceCounters/FluentDispatch.PerformanceCounters.csproj", "FluentDispatch.PerformanceCounters/"]
-COPY ["FluentDispatch.Monitoring/FluentDispatch.Monitoring.csproj", "FluentDispatch.Monitoring/"]
 RUN dotnet restore "Samples/Remote/FluentDispatch.Cluster/FluentDispatch.Cluster.csproj" -s https://www.myget.org/F/appmetrics -s https://api.nuget.org/v3/index.json
 COPY . .
 WORKDIR "/src/Samples/Remote/FluentDispatch.Cluster"
