@@ -1,6 +1,8 @@
 ﻿using System.Threading.Tasks;
 using FluentDispatch.Host.Hosting;
+using FluentDispatch.Logging.Serilog.Extensions;
 using Microsoft.Extensions.Hosting;
+using Serilog;
 
 namespace FluentDispatch.Sample.Web
 {
@@ -9,7 +11,11 @@ namespace FluentDispatch.Sample.Web
         public static async Task Main(string[] args)
         {
             using var host = FluentDispatchCluster<Startup>
-                .CreateDefaultBuilder(configuration => 5000)
+                .CreateDefaultBuilder(configuration => 5000,
+                    (loggerBuilder, configuration) => loggerBuilder.UseSerilog(new LoggerConfiguration().ReadFrom
+                        .Configuration(configuration)
+                        .Enrich.FromLogContext()
+                        .WriteTo.Console(), configuration))
                 .Build();
             await host.RunAsync();
         }

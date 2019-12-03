@@ -3,13 +3,14 @@ using System.Net;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using Serilog;
 using System;
 using MagicOnion.Hosting;
 using Grpc.Core;
 using System.Collections.Generic;
 using MagicOnion.Server;
 using System.Linq;
+using FluentDispatch.Logging.Builders;
+using FluentDispatch.Logging.Extensions;
 using FluentDispatch.Resolvers;
 
 namespace FluentDispatch.Host.Hosting
@@ -20,16 +21,18 @@ namespace FluentDispatch.Host.Hosting
         /// Initializes a new instance of the <see cref="IHostBuilder"/> class with pre-configured defaults.
         /// </summary>
         /// <param name="configureListeningPort">Listening port</param>
+        /// <param name="loggerBuilder">Logger builder</param>
         /// <param name="resolvers">Resolvers</param>
         /// <returns>The initialized <see cref="IHostBuilder"/>.</returns>
         public static IHostBuilder CreateDefaultBuilder(
             Func<IConfiguration, int> configureListeningPort,
+            Func<ILoggerBuilder, IConfiguration, ILoggerBuilder> loggerBuilder,
             params Type[] resolvers)
         {
             var builder = MagicOnionHost.CreateDefaultBuilder();
             ConfigureAppConfigurationDefault(builder);
             ConfigureServices(builder);
-            ConfigureLoggingDefault(builder);
+            ConfigureLoggingDefault(builder, loggerBuilder);
             var configurationBuilder = new ConfigurationBuilder();
             SetConfigurationBuilder(configurationBuilder);
             var configuration = configurationBuilder.Build();
@@ -96,13 +99,10 @@ namespace FluentDispatch.Host.Hosting
             });
         }
 
-        private static void ConfigureLoggingDefault(IHostBuilder builder)
+        private static void ConfigureLoggingDefault(IHostBuilder builder,
+            Func<ILoggerBuilder, IConfiguration, ILoggerBuilder> loggerBuilder)
         {
-            builder.UseSerilog((hostingContext, loggerConfiguration) => loggerConfiguration
-                .ReadFrom.Configuration(hostingContext.Configuration)
-                .Enrich.FromLogContext()
-                .WriteTo.Console()
-            );
+            builder.UseLogging(loggerBuilder);
         }
     }
 }

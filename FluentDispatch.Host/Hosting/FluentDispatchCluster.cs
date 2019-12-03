@@ -1,12 +1,13 @@
 ﻿using System;
 using System.IO;
 using System.Reflection;
+using FluentDispatch.Logging.Builders;
+using FluentDispatch.Logging.Extensions;
 using FluentDispatch.Monitoring.Builders;
 using FluentDispatch.Monitoring.Components;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using Serilog;
 using FluentDispatch.Monitoring.Extensions;
 
 namespace FluentDispatch.Host.Hosting
@@ -17,16 +18,18 @@ namespace FluentDispatch.Host.Hosting
         /// Initializes a new instance of the <see cref="IHostBuilder"/> class with pre-configured defaults.
         /// </summary>
         /// <param name="configureListeningPort">Configure the listening port</param>
+        /// <param name="loggerBuilder">Logger builder</param>
         /// <param name="monitoringBuilder">Monitoring builder</param>
         /// <returns>The initialized <see cref="IHostBuilder"/>.</returns>
         public static IHostBuilder CreateDefaultBuilder(
             Func<IConfiguration, int> configureListeningPort,
+            Func<ILoggerBuilder, IConfiguration, ILoggerBuilder> loggerBuilder,
             Func<IMonitoringBuilder, IConfiguration, IMonitoringComponent> monitoringBuilder = null)
         {
             var hostBuilder = new HostBuilder();
             ConfigureHostConfigurationDefault(hostBuilder);
             ConfigureAppConfigurationDefault(hostBuilder);
-            ConfigureLoggingDefault(hostBuilder);
+            ConfigureLoggingDefault(hostBuilder, loggerBuilder);
             ConfigureWebDefaults(hostBuilder, configureListeningPort, monitoringBuilder);
             return hostBuilder;
         }
@@ -78,13 +81,10 @@ namespace FluentDispatch.Host.Hosting
             });
         }
 
-        private static void ConfigureLoggingDefault(IHostBuilder builder)
+        private static void ConfigureLoggingDefault(IHostBuilder builder,
+            Func<ILoggerBuilder, IConfiguration, ILoggerBuilder> loggerBuilder)
         {
-            builder.UseSerilog((hostingContext, loggerConfiguration) => loggerConfiguration
-                .ReadFrom.Configuration(hostingContext.Configuration)
-                .Enrich.FromLogContext()
-                .WriteTo.Console()
-            );
+            builder.UseLogging(loggerBuilder);
         }
     }
 }

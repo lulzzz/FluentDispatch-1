@@ -13,8 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\FluentDispatch.Logging.Serilog\FluentDispatch.Logging.Serilog.csproj" />
     <ProjectReference Include="..\..\..\FluentDispatch.Monitoring.InfluxDb\FluentDispatch.Monitoring.InfluxDb.csproj" />
-    <ProjectReference Include="..\..\..\FluentDispatch.Monitoring\FluentDispatch.Monitoring.csproj" />
     <ProjectReference Include="..\FluentDispatch.Contract\FluentDispatch.Contract.csproj" />
     <ProjectReference Include="..\..\..\FluentDispatch\FluentDispatch.csproj" />
     <ProjectReference Include="..\..\..\FluentDispatch.Host\FluentDispatch.Host.csproj">

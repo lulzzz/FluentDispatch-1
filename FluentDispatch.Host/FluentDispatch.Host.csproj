@@ -34,6 +34,7 @@
   </ItemGroup>
   
   <ItemGroup>
+    <ProjectReference Include="..\FluentDispatch.Logging\FluentDispatch.Logging.csproj" />
     <ProjectReference Include="..\FluentDispatch.Monitoring\FluentDispatch.Monitoring.csproj" />
     <ProjectReference Include="..\FluentDispatch\FluentDispatch.csproj" />
   </ItemGroup>
