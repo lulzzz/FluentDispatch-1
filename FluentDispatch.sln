@@ -37,6 +37,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Web", "Web", "{4ED9BB20-A0A
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Remote", "Remote", "{65DD2CDC-8E31-45F4-B0E5-23298FB4235E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FluentDispatch.Monitoring.InfluxDb", "FluentDispatch.Monitoring.InfluxDb\FluentDispatch.Monitoring.InfluxDb.csproj", "{4E93626E-D5E3-43EC-A827-8EE2F9D0903B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,10 @@ Global
 		{ECA9166A-29AD-4039-9578-FC421A0C395F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ECA9166A-29AD-4039-9578-FC421A0C395F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ECA9166A-29AD-4039-9578-FC421A0C395F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E93626E-D5E3-43EC-A827-8EE2F9D0903B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E93626E-D5E3-43EC-A827-8EE2F9D0903B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E93626E-D5E3-43EC-A827-8EE2F9D0903B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E93626E-D5E3-43EC-A827-8EE2F9D0903B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

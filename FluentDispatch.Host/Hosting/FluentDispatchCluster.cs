@@ -1,5 +1,8 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Reflection;
+using FluentDispatch.Monitoring.Builders;
+using FluentDispatch.Monitoring.Components;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -13,28 +16,46 @@ namespace FluentDispatch.Host.Hosting
         /// <summary>
         /// Initializes a new instance of the <see cref="IHostBuilder"/> class with pre-configured defaults.
         /// </summary>
+        /// <param name="configureListeningPort">Configure the listening port</param>
+        /// <param name="monitoringBuilder">Monitoring builder</param>
         /// <returns>The initialized <see cref="IHostBuilder"/>.</returns>
-        public static IHostBuilder CreateDefaultBuilder()
+        public static IHostBuilder CreateDefaultBuilder(
+            Func<IConfiguration, int> configureListeningPort,
+            Func<IMonitoringBuilder, IConfiguration, IMonitoringComponent> monitoringBuilder = null)
         {
-            var builder = new HostBuilder();
-            builder.UseWindowsService();
-            ConfigureHostConfigurationDefault(builder);
-            ConfigureAppConfigurationDefault(builder);
-            ConfigureLoggingDefault(builder);
-            ConfigureWebDefaults(builder);
-            return builder;
+            var hostBuilder = new HostBuilder();
+            ConfigureHostConfigurationDefault(hostBuilder);
+            ConfigureAppConfigurationDefault(hostBuilder);
+            ConfigureLoggingDefault(hostBuilder);
+            ConfigureWebDefaults(hostBuilder, configureListeningPort, monitoringBuilder);
+            return hostBuilder;
         }
 
-        private static void ConfigureWebDefaults(IHostBuilder builder)
+        private static void ConfigureWebDefaults(IHostBuilder hostBuilder,
+            Func<IConfiguration, int> configureListeningPort,
+            Func<IMonitoringBuilder, IConfiguration, IMonitoringComponent> monitoringBuilder = null)
         {
-            builder.ConfigureWebHostDefaults(webHostBuilder =>
+            hostBuilder.ConfigureWebHostDefaults(webHostBuilder =>
             {
                 webHostBuilder.UseKestrel((hostingContext, options) =>
                 {
-                    options.ListenAnyIP(hostingContext.Configuration.GetValue<int>(
-                        "FLUENTDISPATCH_CLUSTER_LISTENING_PORT"));
+                    options.ListenAnyIP(configureListeningPort(hostingContext.Configuration));
                 });
-                webHostBuilder.UseMonitoring();
+
+                if (monitoringBuilder != null)
+                {
+                    webHostBuilder.ConfigureAppConfiguration(configurationBuilder =>
+                    {
+                        var configuration = configurationBuilder.Build();
+                        webHostBuilder.UseMonitoring(monitoringBuilder(new MonitoringBuilder(),
+                            configuration));
+                    });
+                }
+                else
+                {
+                    webHostBuilder.UseMonitoring(new MonitoringBuilder().UseSilent().Build());
+                }
+
                 webHostBuilder.UseStartup<TStartup>();
             });
         }
@@ -48,23 +69,11 @@ namespace FluentDispatch.Host.Hosting
         {
             builder.ConfigureAppConfiguration((hostingContext, config) =>
             {
-                var env = hostingContext.HostingEnvironment;
-                config.AddJsonFile(s =>
-                {
-                    s.FileProvider = null;
-                    s.Path = "appsettings.json";
-                    s.Optional = false;
-                    s.ReloadOnChange = true;
-                    s.ResolveFileProvider();
-                });
-                config.AddJsonFile(s =>
-                {
-                    s.FileProvider = null;
-                    s.Path = $"appsettings.{env.EnvironmentName}.json";
-                    s.Optional = true;
-                    s.ReloadOnChange = true;
-                    s.ResolveFileProvider();
-                });
+                config.SetBasePath(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+                config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+                config.AddJsonFile(
+                    $"appsettings.{hostingContext.HostingEnvironment.EnvironmentName}.json",
+                    optional: true, reloadOnChange: true);
                 config.AddEnvironmentVariables();
             });
         }

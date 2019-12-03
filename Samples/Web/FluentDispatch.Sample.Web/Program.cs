@@ -9,7 +9,7 @@ namespace FluentDispatch.Sample.Web
         public static async Task Main(string[] args)
         {
             using var host = FluentDispatchCluster<Startup>
-                .CreateDefaultBuilder()
+                .CreateDefaultBuilder(configuration => 5000)
                 .Build();
             await host.RunAsync();
         }

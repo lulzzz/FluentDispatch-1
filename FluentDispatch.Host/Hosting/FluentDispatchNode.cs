@@ -19,32 +19,25 @@ namespace FluentDispatch.Host.Hosting
         /// <summary>
         /// Initializes a new instance of the <see cref="IHostBuilder"/> class with pre-configured defaults.
         /// </summary>
-        /// <param name="resolvers"></param>
+        /// <param name="configureListeningPort">Listening port</param>
+        /// <param name="resolvers">Resolvers</param>
         /// <returns>The initialized <see cref="IHostBuilder"/>.</returns>
         public static IHostBuilder CreateDefaultBuilder(
+            Func<IConfiguration, int> configureListeningPort,
             params Type[] resolvers)
         {
             var builder = MagicOnionHost.CreateDefaultBuilder();
-            builder.UseWindowsService();
-            ConfigureHostConfigurationDefault(builder);
+            ConfigureAppConfigurationDefault(builder);
+            ConfigureServices(builder);
             ConfigureLoggingDefault(builder);
             var configurationBuilder = new ConfigurationBuilder();
-            configurationBuilder.SetBasePath(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
-            configurationBuilder.AddJsonFile(s =>
-            {
-                s.FileProvider = null;
-                s.Path = "appsettings.json";
-                s.Optional = false;
-                s.ReloadOnChange = true;
-                s.ResolveFileProvider();
-            });
-            configurationBuilder.AddEnvironmentVariables();
+            SetConfigurationBuilder(configurationBuilder);
             var configuration = configurationBuilder.Build();
             builder.UseMagicOnion(
                 new List<ServerPort>
                 {
                     new ServerPort(IPAddress.Any.ToString(),
-                        configuration.GetValue<int>("FLUENTDISPATCH_NODE_LISTENING_PORT"),
+                        configureListeningPort(configuration),
                         ServerCredentials.Insecure)
                 },
                 new MagicOnionOptions(true)
@@ -65,18 +58,42 @@ namespace FluentDispatch.Host.Hosting
                 {
                     typeof(Hubs.Hub.NodeHub)
                 }));
-            builder.ConfigureServices(serviceCollection =>
-            {
-                var startup = (TStartup) Activator.CreateInstance(typeof(TStartup), configuration);
-                startup.ConfigureServices(serviceCollection);
-            });
 
             return builder;
         }
 
-        private static void ConfigureHostConfigurationDefault(IHostBuilder builder)
+        private static void ConfigureAppConfigurationDefault(IHostBuilder builder)
         {
-            builder.UseContentRoot(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+            builder.ConfigureAppConfiguration((hostingContext, config) =>
+            {
+                SetConfigurationBuilder(config, hostingContext);
+            });
+        }
+
+        private static void SetConfigurationBuilder(IConfigurationBuilder config)
+        {
+            config.SetBasePath(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+            config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+            config.AddEnvironmentVariables();
+        }
+
+        private static void SetConfigurationBuilder(IConfigurationBuilder config, HostBuilderContext hostingContext)
+        {
+            config.SetBasePath(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+            config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+            config.AddJsonFile(
+                $"appsettings.{hostingContext.HostingEnvironment.EnvironmentName}.json",
+                optional: true, reloadOnChange: true);
+            config.AddEnvironmentVariables();
+        }
+
+        private static void ConfigureServices(IHostBuilder builder)
+        {
+            builder.ConfigureServices((hostingContext, serviceCollection) =>
+            {
+                var startup = (TStartup) Activator.CreateInstance(typeof(TStartup), hostingContext.Configuration);
+                startup.ConfigureServices(serviceCollection);
+            });
         }
 
         private static void ConfigureLoggingDefault(IHostBuilder builder)

@@ -1,10 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <AssemblyName>FluentDispatch.Cluster</AssemblyName>
     <RootNamespace>FluentDispatch.Cluster</RootNamespace>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\FluentDispatch.Monitoring.InfluxDb\FluentDispatch.Monitoring.InfluxDb.csproj" />
     <ProjectReference Include="..\..\..\FluentDispatch.Monitoring\FluentDispatch.Monitoring.csproj" />
     <ProjectReference Include="..\FluentDispatch.Contract\FluentDispatch.Contract.csproj" />
     <ProjectReference Include="..\..\..\FluentDispatch\FluentDispatch.csproj" />

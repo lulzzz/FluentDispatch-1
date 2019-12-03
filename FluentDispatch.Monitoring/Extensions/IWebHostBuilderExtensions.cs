@@ -1,14 +1,12 @@
-﻿using System;
-using App.Metrics;
-using App.Metrics.AspNetCore;
+﻿using App.Metrics.AspNetCore;
+using FluentDispatch.Monitoring.Components;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 
 namespace FluentDispatch.Monitoring.Extensions
 {
     public static class IWebHostBuilderExtensions
     {
-        public static IWebHostBuilder UseMonitoring(this IWebHostBuilder builder)
+        public static IWebHostBuilder UseMonitoring(this IWebHostBuilder builder, IMonitoringComponent monitoringComponent)
         {
             builder
                 .ConfigureMetricsWithDefaults((context, bld) =>
@@ -19,17 +17,7 @@ namespace FluentDispatch.Monitoring.Extensions
                             options.Enabled = true;
                             options.ReportingEnabled = true;
                         });
-                    if (!string.IsNullOrEmpty(context.Configuration.GetValue<string>("INFLUXDB_ENDPOINT")))
-                    {
-                        bld.Report.ToInfluxDb(options =>
-                        {
-                            options.InfluxDb.BaseUri = new Uri(context.Configuration.GetValue<string>("INFLUXDB_ENDPOINT"));
-                            options.InfluxDb.Database = "fluentdispatch";
-                            options.FlushInterval = TimeSpan.FromSeconds(5);
-                            options.InfluxDb.CreateDataBaseIfNotExists = true;
-                            options.HttpPolicy.Timeout = TimeSpan.FromSeconds(10);
-                        });
-                    }
+                    monitoringComponent.UseMonitoring(bld.Report);
                 });
 
             builder.UseMetricsWebTracking();

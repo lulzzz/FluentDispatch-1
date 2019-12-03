@@ -17,6 +17,7 @@ services:
     container_name: fluentdispatch-cluster
     environment:
       INFLUXDB_ENDPOINT: "http://influxdb:8086"
+      INFLUXDB_DATABASE: "fluentdispatch"
       FLUENTDISPATCH_CLUSTER_LISTENING_PORT: 5432
       FLUENTDISPATCH_CLUSTER_NODES: "[{'MachineName':'node','Port':9090}]"
     build:
