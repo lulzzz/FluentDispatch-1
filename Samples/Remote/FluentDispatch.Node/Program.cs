@@ -12,8 +12,8 @@ namespace FluentDispatch.Node
         static async Task Main(string[] args)
         {
             using var host = FluentDispatchNode<Startup>.CreateDefaultBuilder(
-                    configuration => configuration.GetValue<int>("FLUENTDISPATCH_NODE_LISTENING_PORT"),
-                    (loggerBuilder, configuration) => loggerBuilder.UseSerilog(new LoggerConfiguration().ReadFrom
+                    configureListeningPort: configuration => configuration.GetValue<int>("FLUENTDISPATCH_NODE_LISTENING_PORT"),
+                    loggerBuilder: (loggerBuilder, configuration) => loggerBuilder.UseSerilog(new LoggerConfiguration().ReadFrom
                         .Configuration(configuration)
                         .Enrich.FromLogContext()
                         .WriteTo.Console(), configuration),

@@ -11,8 +11,8 @@ namespace FluentDispatch.Sample.Web
         public static async Task Main(string[] args)
         {
             using var host = FluentDispatchCluster<Startup>
-                .CreateDefaultBuilder(configuration => 5000,
-                    (loggerBuilder, configuration) => loggerBuilder.UseSerilog(new LoggerConfiguration().ReadFrom
+                .CreateDefaultBuilder(configureListeningPort: configuration => 5000,
+                    loggerBuilder: (loggerBuilder, configuration) => loggerBuilder.UseSerilog(new LoggerConfiguration().ReadFrom
                         .Configuration(configuration)
                         .Enrich.FromLogContext()
                         .WriteTo.Console(), configuration))

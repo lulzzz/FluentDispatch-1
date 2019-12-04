@@ -2,18 +2,20 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
   <metadata>
     <id>FluentDispatch.PerformanceCounters</id>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <title>FluentDispatch.PerformanceCounters</title>
     <authors>Benjamin Bougot</authors>
     <owners>Benjamin Bougot</owners>
-    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <requireLicenseAcceptance>true</requireLicenseAcceptance>
+    <licenseUrl>https://github.com/bbougot/FluentDispatch/blob/master/LICENSE</licenseUrl>
     <projectUrl>https://github.com/bbougot/FluentDispatch/</projectUrl>
     <iconUrl>https://raw.githubusercontent.com/bbougot/FluentDispatch/master/Assets/logo.png</iconUrl>
-    <description>Gathering performance counters from FluentDispatch host.</description>
-    <summary>Gathering performance counters from FluentDispatch host.</summary>
+    <description>.NET Standard 2.1 framework which makes easy to scaffold distributed systems and dispatch incoming load into units of work in a deterministic way.</description>
+    <summary>.NET Standard 2.1 framework which makes easy to scaffold distributed systems and dispatch incoming load into units of work in a deterministic way.</summary>
     <dependencies>
       <group targetFramework=".NETStandard2.1">
-        <dependency id="Microsoft.Diagnostics.Tracing.TraceEvent" version="2.0.46" exclude="Build,Analyzers" />
+        <dependency id="Microsoft.Diagnostics.Tracing.TraceEvent" version="2.0.48" exclude="Build,Analyzers" />
+        <dependency id="Microsoft.Extensions.Logging.Abstractions" version="3.1.0" exclude="Build,Analyzers" />
       </group>
     </dependencies>
   </metadata>

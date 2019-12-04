@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>FluentDispatch.Host</id>
+    <version>1.1.0</version>
+    <title>FluentDispatch.Host</title>
+    <authors>Benjamin Bougot</authors>
+    <owners>Benjamin Bougot</owners>
+    <requireLicenseAcceptance>true</requireLicenseAcceptance>
+    <licenseUrl>https://github.com/bbougot/FluentDispatch/blob/master/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/bbougot/FluentDispatch/</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/bbougot/FluentDispatch/master/Assets/logo.png</iconUrl>
+    <description>.NET Standard 2.1 framework which makes easy to scaffold distributed systems and dispatch incoming load into units of work in a deterministic way.</description>
+    <summary>.NET Standard 2.1 framework which makes easy to scaffold distributed systems and dispatch incoming load into units of work in a deterministic way.</summary>
+    <dependencies>
+      <group targetFramework=".NETCoreApp3.1">
+        <dependency id="FluentDispatch.Logging" version="1.1.0" exclude="Build,Analyzers" />
+        <dependency id="FluentDispatch.Monitoring" version="1.1.0" exclude="Build,Analyzers" />
+        <dependency id="FluentDispatch" version="1.1.0" exclude="Build,Analyzers" />
+        <dependency id="MagicOnion" version="2.6.4" exclude="Build,Analyzers" />
+        <dependency id="MagicOnion.Hosting" version="2.6.4" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+    <frameworkReferences>
+      <group targetFramework=".NETCoreApp3.1">
+        <frameworkReference name="Microsoft.AspNetCore.App" />
+      </group>
+    </frameworkReferences>
+    <contentFiles>
+      <files include="any/netcoreapp3.1/grpc_csharp_ext.x64.dll" buildAction="Content" />
+      <files include="any/netcoreapp3.1/libgrpc_csharp_ext.x64.so" buildAction="Content" />
+      <files include="any/netcoreapp3.1/libgrpc_csharp_ext.x64.dylib" buildAction="Content" />
+    </contentFiles>
+  </metadata>
+  <files>
+    <file src="content\grpc_csharp_ext.x64.dll" target="content\grpc_csharp_ext.x64.dll" />
+    <file src="content\libgrpc_csharp_ext.x64.dylib" target="content\libgrpc_csharp_ext.x64.dylib" />
+    <file src="content\libgrpc_csharp_ext.x64.so" target="content\libgrpc_csharp_ext.x64.so" />
+    <file src="contentFiles\any\netcoreapp3.1\grpc_csharp_ext.x64.dll" target="contentFiles\any\netcoreapp3.1\grpc_csharp_ext.x64.dll" />
+    <file src="contentFiles\any\netcoreapp3.1\libgrpc_csharp_ext.x64.dylib" target="contentFiles\any\netcoreapp3.1\libgrpc_csharp_ext.x64.dylib" />
+    <file src="contentFiles\any\netcoreapp3.1\libgrpc_csharp_ext.x64.so" target="contentFiles\any\netcoreapp3.1\libgrpc_csharp_ext.x64.so" />
+    <file src="lib\netcoreapp3.1\FluentDispatch.Host.dll" target="lib\netcoreapp3.1\FluentDispatch.Host.dll" />
+  </files>
+</package>
