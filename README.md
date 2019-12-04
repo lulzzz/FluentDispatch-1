@@ -330,7 +330,7 @@ This sample demonstrates the ability to dispatch a workload to remote machines i
 
 ## Requirements
 
-**FluentDispatch** framework requires .NET Standard 2.1 support, and is available for applications targeting .NET Core >= 3.0, thus supporting Windows/Linux/macOS environments.
+**FluentDispatch** framework requires .NET Standard 2.1 support, and is available for applications targeting .NET Core >= 3.1, thus supporting Windows/Linux/macOS environments.
 
 
 
