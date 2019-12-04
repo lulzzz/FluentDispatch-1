@@ -4,7 +4,28 @@
   FluentDispatch
 </h1>
 
-[![NuGet](https://img.shields.io/nuget/v/FluentDispatch.svg)](https://www.nuget.org/packages/FluentDispatch/) [![NuGet](https://img.shields.io/nuget/dt/FluentDispatch.svg)](https://www.nuget.org/stats/packages/FluentDispatch?groupby=Version)
+[![FluentDispatch](https://img.shields.io/nuget/v/FluentDispatch.svg?label=FluentDispatch)](https://www.nuget.org/packages/FluentDispatch/) 
+[![FluentDispatch](https://img.shields.io/nuget/dt/FluentDispatch.svg)](https://www.nuget.org/stats/packages/FluentDispatch?groupby=Version)
+
+[![FluentDispatch.PerformanceCounters](https://img.shields.io/nuget/v/FluentDispatch.PerformanceCounters.svg?label=FluentDispatch.PerformanceCounters)](https://www.nuget.org/packages/FluentDispatch.PerformanceCounters/) 
+[![FluentDispatch.PerformanceCounters](https://img.shields.io/nuget/dt/FluentDispatch.PerformanceCounters.svg)](https://www.nuget.org/stats/packages/FluentDispatch.PerformanceCounters?groupby=Version)
+
+[![FluentDispatch.Host](https://img.shields.io/nuget/v/FluentDispatch.Host.svg?label=FluentDispatch.Host)](https://www.nuget.org/packages/FluentDispatch.Host/) 
+[![FluentDispatch.Host](https://img.shields.io/nuget/dt/FluentDispatch.Host.svg)](https://www.nuget.org/stats/packages/FluentDispatch.Host?groupby=Version)
+
+[![FluentDispatch.Monitoring](https://img.shields.io/nuget/v/FluentDispatch.Monitoring.svg?label=FluentDispatch.Monitoring)](https://www.nuget.org/packages/FluentDispatch.Monitoring/) 
+[![FluentDispatch.Monitoring](https://img.shields.io/nuget/dt/FluentDispatch.Monitoring.svg)](https://www.nuget.org/stats/packages/FluentDispatch.Monitoring?groupby=Version)
+
+[![FluentDispatch.Monitoring.InfluxDb](https://img.shields.io/nuget/v/FluentDispatch.Monitoring.InfluxDb.svg?label=FluentDispatch.Monitoring.InfluxDb)](https://www.nuget.org/packages/FluentDispatch.Monitoring.InfluxDb/) 
+[![FluentDispatch.Monitoring.InfluxDb](https://img.shields.io/nuget/dt/FluentDispatch.Monitoring.InfluxDb.svg)](https://www.nuget.org/stats/packages/FluentDispatch.Monitoring.InfluxDb?groupby=Version)
+
+[![FluentDispatch.Logging](https://img.shields.io/nuget/v/FluentDispatch.Logging.svg?label=FluentDispatch.Logging)](https://www.nuget.org/packages/FluentDispatch.Logging/) 
+[![FluentDispatch.Logging](https://img.shields.io/nuget/dt/FluentDispatch.Logging.svg)](https://www.nuget.org/stats/packages/FluentDispatch.Logging?groupby=Version)
+
+[![FluentDispatch.Logging.Serilog](https://img.shields.io/nuget/v/FluentDispatch.Logging.Serilog.svg?label=FluentDispatch.Logging.Serilog)](https://www.nuget.org/packages/FluentDispatch.Logging.Serilog/) 
+[![FluentDispatch.Logging.Serilog](https://img.shields.io/nuget/dt/FluentDispatch.Logging.Serilog.svg)](https://www.nuget.org/stats/packages/FluentDispatch.Logging.Serilog?groupby=Version)
+
+
 <p align="left">
   <a href="https://github.com/bbougot/FluentDispatch/actions"><img alt="GitHub Actions status" src="https://github.com/bbougot/FluentDispatch/workflows/Build%20%26%20Test/badge.svg"></a>
 </p>
