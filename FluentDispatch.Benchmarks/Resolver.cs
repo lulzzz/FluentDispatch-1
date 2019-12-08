@@ -10,6 +10,12 @@ namespace FluentDispatch.Benchmarks
     {
         protected override async Task Process(Message item, NodeMetrics nodeMetrics, CancellationToken cancellationToken)
         {
+            item.Body.Add(Helper.FindPrimeNumber(10));
+            if (item.Body.Count == item.Target)
+            {
+                item.SemaphoreSlim.Release();
+            }
+
             await Task.CompletedTask;
         }
     }

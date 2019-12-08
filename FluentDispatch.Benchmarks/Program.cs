@@ -1,14 +1,13 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using System.Threading;
-using AutoFixture;
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Order;
 using BenchmarkDotNet.Running;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using FluentDispatch.Benchmarks.Models;
 using FluentDispatch.Clusters;
@@ -31,110 +30,70 @@ namespace FluentDispatch.Benchmarks
             }
         }
 
-        private Message[] _messages;
         private ICluster<Message> _parallelCluster;
-        private ICluster<Message> _sequentialCluster;
-        private readonly Progress<double> _progress = new Progress<double>();
-
-        [Params(1, 50, 100)] public int MaxCpuUsage;
+        private Progress<double> _progress;
 
         [GlobalSetup]
         public void Setup()
         {
-            var fixture = new Fixture {RepeatCount = 1000};
-            _messages = fixture.Create<Message[]>();
-            _parallelCluster = new Cluster<Message>(
+            _progress = new Progress<double>();
+            _parallelCluster = new DirectCluster<Message>(
                 new Resolver(),
-                new OptionsWrapper<ClusterOptions>(new ClusterOptions(clusterSize: 10,
-                    limitCpuUsage: MaxCpuUsage,
-                    nodeQueuingStrategy: NodeQueuingStrategy.BestEffort,
-                    nodeThrottling: 10,
-                    evictItemsWhenNodesAreFull: false,
-                    retryAttempt: 3,
-                    windowInMilliseconds: 2500,
+                new OptionsWrapper<ClusterOptions>(new ClusterOptions(clusterSize: Environment.ProcessorCount,
+                    nodeQueuingStrategy: NodeQueuingStrategy.Randomized,
                     clusterProcessingType: ClusterProcessingType.Parallel)),
-                new OptionsWrapper<CircuitBreakerOptions>(new CircuitBreakerOptions(
-                    circuitBreakerFailureThreshold: 0.5d,
-                    circuitBreakerSamplingDurationInMilliseconds: 5000,
-                    circuitBreakerDurationOfBreakInMilliseconds: 30000,
-                    circuitBreakerMinimumThroughput: 20)),
-                _progress,
-                new CancellationTokenSource());
-
-            _sequentialCluster = new Cluster<Message>(
-                new Resolver(),
-                new OptionsWrapper<ClusterOptions>(new ClusterOptions(clusterSize: 10,
-                    limitCpuUsage: MaxCpuUsage,
-                    nodeQueuingStrategy: NodeQueuingStrategy.BestEffort,
-                    nodeThrottling: 10,
-                    evictItemsWhenNodesAreFull: false,
-                    retryAttempt: 3,
-                    windowInMilliseconds: 2500,
-                    clusterProcessingType: ClusterProcessingType.Sequential)),
-                new OptionsWrapper<CircuitBreakerOptions>(new CircuitBreakerOptions(
-                    circuitBreakerFailureThreshold: 0.5d,
-                    circuitBreakerSamplingDurationInMilliseconds: 5000,
-                    circuitBreakerDurationOfBreakInMilliseconds: 30000,
-                    circuitBreakerMinimumThroughput: 20)),
+                new OptionsWrapper<CircuitBreakerOptions>(new CircuitBreakerOptions()),
                 _progress,
                 new CancellationTokenSource());
         }
 
-        [Benchmark(Description = "Dispatch messages in parallel")]
-        public void Dispatch_And_Process_In_Parallel()
+        [Benchmark(Description = "Fire-And-Forget FluentDispatch")]
+        public async Task Dispatch_And_Process_In_Parallel()
         {
-            foreach (var message in _messages)
+            var body = new ConcurrentBag<long>();
+            const int target = 1_000;
+            using var semaphore = new SemaphoreSlim(0);
+            var messages = new ConcurrentBag<Message>();
+            for (var i = 0; i < target; i++)
             {
-                _parallelCluster.Dispatch(() =>
+                messages.Add(new Message(target, body, semaphore));
+            }
+
+            foreach (var message in messages)
+            {
+                _parallelCluster.Dispatch(message);
+            }
+
+            await semaphore.WaitAsync();
+        }
+
+        [Benchmark(Description = "Fire-And-Forget Task.Run")]
+        public async Task Dispatch_TPL()
+        {
+            var body = new ConcurrentBag<long>();
+            const int target = 1_000;
+            using var semaphore = new SemaphoreSlim(0);
+            var messages = new ConcurrentBag<Message>();
+            for (var i = 0; i < target; i++)
+            {
+                messages.Add(new Message(target, body, semaphore));
+            }
+
+            foreach (var message in messages)
+            {
+#pragma warning disable 4014
+                Task.Run(() =>
+#pragma warning restore 4014
                 {
-                    var primeNumber = FindPrimeNumber(1000);
+                    message.Body.Add(Helper.FindPrimeNumber(10));
+                    if (message.Body.Count == message.Target)
+                        message.SemaphoreSlim.Release();
+
                     return message;
                 });
             }
-        }
 
-        [Benchmark(Description = "Dispatch messages sequentially")]
-        public void Dispatch_And_Process_Sequentially()
-        {
-            foreach (var message in _messages)
-            {
-                _sequentialCluster.Dispatch(() =>
-                {
-                    var primeNumber = FindPrimeNumber(1000);
-                    return message;
-                });
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long FindPrimeNumber(int n)
-        {
-            var count = 0;
-            long a = 2;
-            while (count < n)
-            {
-                long b = 2;
-                var prime = 1;
-                while (b * b <= a)
-                {
-                    if (a % b == 0)
-                    {
-                        prime = 0;
-                        break;
-                    }
-
-                    b++;
-                }
-
-                if (prime > 0)
-                {
-                    count++;
-                }
-
-                a++;
-            }
-
-            return (--a);
+            await semaphore.WaitAsync();
         }
     }
 

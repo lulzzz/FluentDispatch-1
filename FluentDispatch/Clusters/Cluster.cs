@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -15,10 +16,12 @@ using FluentDispatch.Options;
 using FluentDispatch.Resolvers;
 using Polly;
 using FluentDispatch.Nodes.Local.Async;
+using FluentDispatch.Nodes.Local.Direct;
 using FluentDispatch.Nodes.Remote.Async;
 using FluentDispatch.Nodes.Local.Unary;
 using FluentDispatch.Nodes.Remote.Unary;
 using FluentDispatch.Nodes.Local.Dual;
+using FluentDispatch.Nodes.Remote.Direct;
 using FluentDispatch.Nodes.Remote.Dual;
 
 namespace FluentDispatch.Clusters
@@ -33,31 +36,32 @@ namespace FluentDispatch.Clusters
         /// <summary>
         /// Local atomic nodes of the cluster, which process items immediately
         /// </summary>
-        private readonly List<IAsyncDispatcherLocalNode<TInput, TOutput>> _localAtomicNodes =
-            new List<IAsyncDispatcherLocalNode<TInput, TOutput>>();
+        private readonly ConcurrentDictionary<Guid, IAsyncDispatcherLocalNode<TInput, TOutput>> _localAtomicNodes =
+            new ConcurrentDictionary<Guid, IAsyncDispatcherLocalNode<TInput, TOutput>>();
 
         /// <summary>
         /// Local queue nodes of the cluster, which process items using a dispatcher queue
         /// </summary>
-        private readonly List<IAsyncDispatcherQueueLocalNode<TInput, TOutput>> _localQueueNodes =
-            new List<IAsyncDispatcherQueueLocalNode<TInput, TOutput>>();
+        private readonly ConcurrentDictionary<Guid, IAsyncDispatcherQueueLocalNode<TInput, TOutput>> _localQueueNodes =
+            new ConcurrentDictionary<Guid, IAsyncDispatcherQueueLocalNode<TInput, TOutput>>();
 
         /// <summary>
         /// Remote atomic nodes of the cluster, which process items immediately
         /// </summary>
-        private readonly List<IAsyncDispatcherRemoteNode<TInput, TOutput>> _remoteAtomicNodes =
-            new List<IAsyncDispatcherRemoteNode<TInput, TOutput>>();
+        private readonly ConcurrentDictionary<Guid, IAsyncDispatcherRemoteNode<TInput, TOutput>> _remoteAtomicNodes =
+            new ConcurrentDictionary<Guid, IAsyncDispatcherRemoteNode<TInput, TOutput>>();
 
         /// <summary>
         /// Remote queue nodes of the cluster, which process items using a dispatcher queue
         /// </summary>
-        private readonly List<IAsyncDispatcherQueueRemoteNode<TInput, TOutput>> _remoteQueueNodes =
-            new List<IAsyncDispatcherQueueRemoteNode<TInput, TOutput>>();
+        private readonly ConcurrentDictionary<Guid, IAsyncDispatcherQueueRemoteNode<TInput, TOutput>> _remoteQueueNodes
+            =
+            new ConcurrentDictionary<Guid, IAsyncDispatcherQueueRemoteNode<TInput, TOutput>>();
 
         /// <summary>
         /// Node health subscriptions
         /// </summary>
-        private readonly List<IDisposable> _nodeHealthSubscriptions = new List<IDisposable>();
+        private readonly ConcurrentBag<IDisposable> _nodeHealthSubscriptions = new ConcurrentBag<IDisposable>();
 
         /// <summary>
         /// <see cref="CircuitBreakerOptions"/>
@@ -111,17 +115,18 @@ namespace FluentDispatch.Clusters
 
                     foreach (var host in ClusterOptions.Hosts)
                     {
-                        _remoteAtomicNodes.Add((IAsyncDispatcherRemoteNode<TInput, TOutput>) Activator.CreateInstance(
+                        var remoteAtomicNode = (IAsyncDispatcherRemoteNode<TInput, TOutput>) Activator.CreateInstance(
                             typeof(AsyncDispatcherRemoteNode<TInput, TOutput>),
                             host,
                             CancellationTokenSource,
                             circuitBreakerOptions,
                             clusterOptions,
-                            Logger));
+                            Logger);
+                        _remoteAtomicNodes.TryAdd(remoteAtomicNode.NodeMetrics.Id, remoteAtomicNode);
 
                         if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                         {
-                            _remoteQueueNodes.Add(
+                            var remoteQueueNode =
                                 (IAsyncDispatcherQueueRemoteNode<TInput, TOutput>) Activator.CreateInstance(
                                     typeof(AsyncParallelDispatcherRemoteNode<TInput, TOutput>),
                                     host,
@@ -129,11 +134,12 @@ namespace FluentDispatch.Clusters
                                     CancellationTokenSource,
                                     circuitBreakerOptions,
                                     clusterOptions,
-                                    Logger));
+                                    Logger);
+                            _remoteQueueNodes.TryAdd(remoteQueueNode.NodeMetrics.Id, remoteQueueNode);
                         }
                         else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                         {
-                            _remoteQueueNodes.Add(
+                            var remoteQueueNode =
                                 (IAsyncDispatcherQueueRemoteNode<TInput, TOutput>) Activator.CreateInstance(
                                     typeof(AsyncSequentialDispatcherRemoteNode<TInput, TOutput>),
                                     host,
@@ -141,7 +147,8 @@ namespace FluentDispatch.Clusters
                                     CancellationTokenSource,
                                     circuitBreakerOptions,
                                     clusterOptions,
-                                    Logger));
+                                    Logger);
+                            _remoteQueueNodes.TryAdd(remoteQueueNode.NodeMetrics.Id, remoteQueueNode);
                         }
                         else
                         {
@@ -154,34 +161,37 @@ namespace FluentDispatch.Clusters
                 {
                     for (var i = 0; i < clusterOptions.ClusterSize; i++)
                     {
-                        _localAtomicNodes.Add((IAsyncDispatcherLocalNode<TInput, TOutput>) Activator.CreateInstance(
+                        var localAtomicNode = (IAsyncDispatcherLocalNode<TInput, TOutput>) Activator.CreateInstance(
                             typeof(AsyncDispatcherLocalNode<TInput, TOutput>),
                             CancellationTokenSource,
                             circuitBreakerOptions,
                             clusterOptions,
-                            Logger));
+                            Logger);
+                        _localAtomicNodes.TryAdd(localAtomicNode.NodeMetrics.Id, localAtomicNode);
 
                         if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                         {
-                            _localQueueNodes.Add(
+                            var localQueueNode =
                                 (IAsyncDispatcherQueueLocalNode<TInput, TOutput>) Activator.CreateInstance(
                                     typeof(AsyncParallelDispatcherLocalNode<TInput, TOutput>),
                                     Progress,
                                     CancellationTokenSource,
                                     circuitBreakerOptions,
                                     clusterOptions,
-                                    Logger));
+                                    Logger);
+                            _localQueueNodes.TryAdd(localQueueNode.NodeMetrics.Id, localQueueNode);
                         }
                         else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                         {
-                            _localQueueNodes.Add(
+                            var localQueueNode =
                                 (IAsyncDispatcherQueueLocalNode<TInput, TOutput>) Activator.CreateInstance(
                                     typeof(AsyncSequentialDispatcherLocalNode<TInput, TOutput>),
                                     Progress,
                                     CancellationTokenSource,
                                     circuitBreakerOptions,
                                     clusterOptions,
-                                    Logger));
+                                    Logger);
+                            _localQueueNodes.TryAdd(localQueueNode.NodeMetrics.Id, localQueueNode);
                         }
                         else
                         {
@@ -194,25 +204,25 @@ namespace FluentDispatch.Clusters
                 foreach (var node in _localAtomicNodes)
                 {
                     _nodeHealthSubscriptions.Add(
-                        node.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalAtomicNodeHealth));
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalAtomicNodeHealth));
                 }
 
                 foreach (var node in _localQueueNodes)
                 {
                     _nodeHealthSubscriptions.Add(
-                        node.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalQueueNodeHealth));
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalQueueNodeHealth));
                 }
 
                 foreach (var node in _remoteAtomicNodes)
                 {
                     _nodeHealthSubscriptions.Add(
-                        node.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteAtomicNodeHealth));
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteAtomicNodeHealth));
                 }
 
                 foreach (var node in _remoteQueueNodes)
                 {
                     _nodeHealthSubscriptions.Add(
-                        node.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteQueueNodeHealth));
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteQueueNodeHealth));
                 }
 
                 LogClusterOptions(circuitBreakerOptions,
@@ -232,8 +242,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeLocalAtomicNodeHealth(Guid guid)
         {
-            var node = _localAtomicNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_localAtomicNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -242,8 +252,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeRemoteAtomicNodeHealth(Guid guid)
         {
-            var node = _remoteAtomicNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_remoteAtomicNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -252,8 +262,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeLocalQueueNodeHealth(Guid guid)
         {
-            var node = _localQueueNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_localQueueNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -262,8 +272,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeRemoteQueueNodeHealth(Guid guid)
         {
-            var node = _remoteQueueNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_remoteQueueNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -271,10 +281,11 @@ namespace FluentDispatch.Clusters
         /// </summary>
         protected override void ComputeClusterHealth()
         {
-            ClusterMetrics.CurrentThroughput = _localAtomicNodes.Sum(node => node.NodeMetrics.CurrentThroughput) +
-                                               _localQueueNodes.Sum(node => node.NodeMetrics.CurrentThroughput) +
-                                               _remoteAtomicNodes.Sum(node => node.NodeMetrics.CurrentThroughput) +
-                                               _remoteQueueNodes.Sum(node => node.NodeMetrics.CurrentThroughput);
+            ClusterMetrics.CurrentThroughput = _localAtomicNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput) +
+                                               _localQueueNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput) +
+                                               _remoteAtomicNodes.Sum(node =>
+                                                   node.Value.NodeMetrics.CurrentThroughput) +
+                                               _remoteQueueNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput);
             base.ComputeClusterHealth();
         }
 
@@ -291,22 +302,21 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localAtomicNodes.ToList();
-                if (availableNodes.Any())
+                if (_localAtomicNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localAtomicNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        return await node.ExecuteAsync(selector, item, cancellationToken);
+                        return await node.Value.ExecuteAsync(selector, item, cancellationToken);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        return await node.ExecuteAsync(selector, item, cancellationToken);
+                        var node = _localAtomicNodes.ElementAt(Random.Value.Next(0,
+                            _localAtomicNodes.Count));
+                        return await node.Value.ExecuteAsync(selector, item, cancellationToken);
                     }
                 }
                 else
@@ -337,22 +347,21 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localQueueNodes.ToList();
-                if (availableNodes.Any())
+                if (_localQueueNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localQueueNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        return await node.DispatchAsync(selector, item, cancellationToken);
+                        return await node.Value.DispatchAsync(selector, item, cancellationToken);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        return await node.DispatchAsync(selector, item, cancellationToken);
+                        var node = _localQueueNodes.ElementAt(Random.Value.Next(0,
+                            _localQueueNodes.Count));
+                        return await node.Value.DispatchAsync(selector, item, cancellationToken);
                     }
                 }
                 else
@@ -383,39 +392,39 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteAtomicNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        return await node.ExecuteAsync(item, cancellationToken);
+                        return await node.Value.ExecuteAsync(item, cancellationToken);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        return await node.ExecuteAsync(item, cancellationToken);
+                        return await node.Value.ExecuteAsync(item, cancellationToken);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        return await node.ExecuteAsync(item, cancellationToken);
+                        return await node.Value.ExecuteAsync(item, cancellationToken);
                     }
                     else
                     {
@@ -425,7 +434,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteQueueNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteQueueNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -460,39 +469,39 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteQueueNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        return await node.DispatchAsync(item, cancellationToken);
+                        return await node.Value.DispatchAsync(item, cancellationToken);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        return await node.DispatchAsync(item, cancellationToken);
+                        return await node.Value.DispatchAsync(item, cancellationToken);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        return await node.DispatchAsync(item, cancellationToken);
+                        return await node.Value.DispatchAsync(item, cancellationToken);
                     }
                     else
                     {
@@ -502,7 +511,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteQueueNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteQueueNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -531,10 +540,10 @@ namespace FluentDispatch.Clusters
         {
             get
             {
-                var localAtomicNodes = _localAtomicNodes.Select(node => node as INode);
-                var localQueueNodes = _localQueueNodes.Select(node => node as INode);
-                var remoteAtomicNodes = _remoteAtomicNodes.Select(node => node as INode);
-                var remoteQueueNodes = _remoteQueueNodes.Select(node => node as INode);
+                var localAtomicNodes = _localAtomicNodes.Select(node => node.Value as INode);
+                var localQueueNodes = _localQueueNodes.Select(node => node.Value as INode);
+                var remoteAtomicNodes = _remoteAtomicNodes.Select(node => node.Value as INode);
+                var remoteQueueNodes = _remoteQueueNodes.Select(node => node.Value as INode);
                 return new ReadOnlyCollection<INode>(localAtomicNodes.Concat(localQueueNodes).Concat(remoteAtomicNodes)
                     .Concat(remoteQueueNodes).ToList());
 
@@ -555,29 +564,30 @@ namespace FluentDispatch.Clusters
                         "Host must be provided.");
                 }
 
-                _remoteAtomicNodes.Add((IAsyncDispatcherRemoteNode<TInput, TOutput>) Activator.CreateInstance(
+                var remoteAtomicNode = (IAsyncDispatcherRemoteNode<TInput, TOutput>) Activator.CreateInstance(
                     typeof(AsyncDispatcherRemoteNode<TInput, TOutput>),
                     host,
                     CancellationTokenSource,
                     _circuitBreakerOptions,
                     ClusterOptions,
-                    Logger));
+                    Logger);
+                _remoteAtomicNodes.TryAdd(remoteAtomicNode.NodeMetrics.Id, remoteAtomicNode);
 
                 if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                 {
-                    _remoteQueueNodes.Add(
-                        (IAsyncDispatcherQueueRemoteNode<TInput, TOutput>) Activator.CreateInstance(
-                            typeof(AsyncParallelDispatcherRemoteNode<TInput, TOutput>),
-                            host,
-                            Progress,
-                            CancellationTokenSource,
-                            _circuitBreakerOptions,
-                            ClusterOptions,
-                            Logger));
+                    var remoteQueueNode = (IAsyncDispatcherQueueRemoteNode<TInput, TOutput>) Activator.CreateInstance(
+                        typeof(AsyncParallelDispatcherRemoteNode<TInput, TOutput>),
+                        host,
+                        Progress,
+                        CancellationTokenSource,
+                        _circuitBreakerOptions,
+                        ClusterOptions,
+                        Logger);
+                    _remoteQueueNodes.TryAdd(remoteQueueNode.NodeMetrics.Id, remoteQueueNode);
                 }
                 else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                 {
-                    _remoteQueueNodes.Add(
+                    var remoteQueueNode =
                         (IAsyncDispatcherQueueRemoteNode<TInput, TOutput>) Activator.CreateInstance(
                             typeof(AsyncSequentialDispatcherRemoteNode<TInput, TOutput>),
                             host,
@@ -585,7 +595,8 @@ namespace FluentDispatch.Clusters
                             CancellationTokenSource,
                             _circuitBreakerOptions,
                             ClusterOptions,
-                            Logger));
+                            Logger);
+                    _remoteQueueNodes.TryAdd(remoteQueueNode.NodeMetrics.Id, remoteQueueNode);
                 }
                 else
                 {
@@ -595,34 +606,37 @@ namespace FluentDispatch.Clusters
             }
             else
             {
-                _localAtomicNodes.Add((IAsyncDispatcherLocalNode<TInput, TOutput>) Activator.CreateInstance(
+                var loalAtomicNode = (IAsyncDispatcherLocalNode<TInput, TOutput>) Activator.CreateInstance(
                     typeof(AsyncDispatcherLocalNode<TInput, TOutput>),
                     CancellationTokenSource,
                     _circuitBreakerOptions,
                     ClusterOptions,
-                    Logger));
+                    Logger);
+                _localAtomicNodes.TryAdd(loalAtomicNode.NodeMetrics.Id, loalAtomicNode);
 
                 if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                 {
-                    _localQueueNodes.Add(
+                    var localQueueNode =
                         (IAsyncDispatcherQueueLocalNode<TInput, TOutput>) Activator.CreateInstance(
                             typeof(AsyncParallelDispatcherLocalNode<TInput, TOutput>),
                             Progress,
                             CancellationTokenSource,
                             _circuitBreakerOptions,
                             ClusterOptions,
-                            Logger));
+                            Logger);
+                    _localQueueNodes.TryAdd(localQueueNode.NodeMetrics.Id, localQueueNode);
                 }
                 else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                 {
-                    _localQueueNodes.Add(
+                    var localQueueNode =
                         (IAsyncDispatcherQueueLocalNode<TInput, TOutput>) Activator.CreateInstance(
                             typeof(AsyncSequentialDispatcherLocalNode<TInput, TOutput>),
                             Progress,
                             CancellationTokenSource,
                             _circuitBreakerOptions,
                             ClusterOptions,
-                            Logger));
+                            Logger);
+                    _localQueueNodes.TryAdd(localQueueNode.NodeMetrics.Id, localQueueNode);
                 }
                 else
                 {
@@ -631,13 +645,13 @@ namespace FluentDispatch.Clusters
                 }
             }
 
-            _nodeHealthSubscriptions.Add(_localAtomicNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_localAtomicNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeLocalAtomicNodeHealth));
-            _nodeHealthSubscriptions.Add(_localQueueNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_localQueueNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeLocalQueueNodeHealth));
-            _nodeHealthSubscriptions.Add(_remoteAtomicNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_remoteAtomicNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeRemoteAtomicNodeHealth));
-            _nodeHealthSubscriptions.Add(_remoteQueueNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_remoteQueueNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeRemoteQueueNodeHealth));
         }
 
@@ -647,29 +661,10 @@ namespace FluentDispatch.Clusters
         /// <param name="nodeId">Node Id</param>
         public void DeleteNode(Guid nodeId)
         {
-            if (_localAtomicNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _localAtomicNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _localAtomicNodes.Remove(nodeToRemove);
-            }
-
-            if (_localQueueNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _localQueueNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _localQueueNodes.Remove(nodeToRemove);
-            }
-
-            if (_remoteAtomicNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _remoteAtomicNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _remoteAtomicNodes.Remove(nodeToRemove);
-            }
-
-            if (_remoteQueueNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _remoteQueueNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _remoteQueueNodes.Remove(nodeToRemove);
-            }
+            _localAtomicNodes.TryRemove(nodeId, out _);
+            _localQueueNodes.TryRemove(nodeId, out _);
+            _remoteAtomicNodes.TryRemove(nodeId, out _);
+            _remoteQueueNodes.TryRemove(nodeId, out _);
         }
 
         /// <summary>
@@ -685,22 +680,22 @@ namespace FluentDispatch.Clusters
             {
                 foreach (var node in _localAtomicNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
                 }
 
                 foreach (var node in _localQueueNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
                 }
 
                 foreach (var node in _remoteAtomicNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
                 }
 
                 foreach (var node in _remoteQueueNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
                 }
 
                 foreach (var nodeHealthSubscription in _nodeHealthSubscriptions)
@@ -723,19 +718,19 @@ namespace FluentDispatch.Clusters
         /// <summary>
         /// Local nodes of the cluster
         /// </summary>
-        private readonly List<IUnaryDispatcherLocalNode<TInput>> _localNodes =
-            new List<IUnaryDispatcherLocalNode<TInput>>();
+        private readonly ConcurrentDictionary<Guid, IUnaryDispatcherLocalNode<TInput>> _localNodes =
+            new ConcurrentDictionary<Guid, IUnaryDispatcherLocalNode<TInput>>();
 
         /// <summary>
         /// Remote nodes of the cluster
         /// </summary>
-        private readonly List<IUnaryDispatcherRemoteNode<TInput>> _remoteNodes =
-            new List<IUnaryDispatcherRemoteNode<TInput>>();
+        private readonly ConcurrentDictionary<Guid, IUnaryDispatcherRemoteNode<TInput>> _remoteNodes =
+            new ConcurrentDictionary<Guid, IUnaryDispatcherRemoteNode<TInput>>();
 
         /// <summary>
         /// Node health subscriptions
         /// </summary>
-        private readonly List<IDisposable> _nodeHealthSubscriptions = new List<IDisposable>();
+        private readonly ConcurrentBag<IDisposable> _nodeHealthSubscriptions = new ConcurrentBag<IDisposable>();
 
         /// <summary>
         /// <see cref="CircuitBreakerOptions"/>
@@ -805,7 +800,7 @@ namespace FluentDispatch.Clusters
                     {
                         if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                         {
-                            _remoteNodes.Add((IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                            var remoteNode = (IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
                                 typeof(UnaryParallelDispatcherRemoteNode<TInput>),
                                 PersistentCache,
                                 Progress,
@@ -813,11 +808,12 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                         }
                         else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                         {
-                            _remoteNodes.Add((IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                            var remoteNode = (IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
                                 typeof(UnarySequentialDispatcherRemoteNode<TInput>),
                                 PersistentCache,
                                 Progress,
@@ -825,7 +821,8 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                         }
                         else
                         {
@@ -840,7 +837,7 @@ namespace FluentDispatch.Clusters
                     {
                         if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                         {
-                            _localNodes.Add((IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                            var localNode = (IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
                                 typeof(UnaryParallelDispatcherLocalNode<TInput>),
                                 PersistentCache,
                                 funcResolver.GetItemFunc(),
@@ -848,11 +845,12 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                         }
                         else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                         {
-                            _localNodes.Add((IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                            var localNode = (IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
                                 typeof(UnarySequentialDispatcherLocalNode<TInput>),
                                 PersistentCache,
                                 funcResolver.GetItemFunc(),
@@ -860,7 +858,8 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                         }
                         else
                         {
@@ -872,12 +871,14 @@ namespace FluentDispatch.Clusters
 
                 foreach (var node in _localNodes)
                 {
-                    _nodeHealthSubscriptions.Add(node.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalNodeHealth));
+                    _nodeHealthSubscriptions.Add(
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalNodeHealth));
                 }
 
                 foreach (var node in _remoteNodes)
                 {
-                    _nodeHealthSubscriptions.Add(node.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteNodeHealth));
+                    _nodeHealthSubscriptions.Add(
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteNodeHealth));
                 }
 
                 LogClusterOptions(circuitBreakerOptions, _localNodes.Count + _remoteNodes.Count);
@@ -918,8 +919,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeLocalNodeHealth(Guid guid)
         {
-            var node = _localNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_localNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -928,8 +929,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeRemoteNodeHealth(Guid guid)
         {
-            var node = _remoteNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_remoteNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -937,8 +938,8 @@ namespace FluentDispatch.Clusters
         /// </summary>
         protected override void ComputeClusterHealth()
         {
-            ClusterMetrics.CurrentThroughput = _localNodes.Sum(node => node.NodeMetrics.CurrentThroughput) +
-                                               _remoteNodes.Sum(node => node.NodeMetrics.CurrentThroughput);
+            ClusterMetrics.CurrentThroughput = _localNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput) +
+                                               _remoteNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput);
             base.ComputeClusterHealth();
         }
 
@@ -954,22 +955,21 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localNodes.ToList();
-                if (availableNodes.Any())
+                if (_localNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        node.Dispatch(item);
+                        node.Value.Dispatch(item);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        node.Dispatch(item);
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        node.Value.Dispatch(item);
                     }
                 }
                 else
@@ -983,39 +983,39 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        node.Dispatch(item);
+                        node.Value.Dispatch(item);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        node.Dispatch(item);
+                        node.Value.Dispatch(item);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        node.Dispatch(item);
+                        node.Value.Dispatch(item);
                     }
                     else
                     {
@@ -1025,7 +1025,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -1052,22 +1052,21 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localNodes.ToList();
-                if (availableNodes.Any())
+                if (_localNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        node.Dispatch(itemProducer);
+                        node.Value.Dispatch(itemProducer);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        node.Dispatch(itemProducer);
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        node.Value.Dispatch(itemProducer);
                     }
                 }
                 else
@@ -1081,39 +1080,39 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        node.Dispatch(itemProducer);
+                        node.Value.Dispatch(itemProducer);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        node.Dispatch(itemProducer);
+                        node.Value.Dispatch(itemProducer);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        node.Dispatch(itemProducer);
+                        node.Value.Dispatch(itemProducer);
                     }
                     else
                     {
@@ -1123,7 +1122,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -1145,8 +1144,8 @@ namespace FluentDispatch.Clusters
         {
             get
             {
-                var localNodes = _localNodes.Select(node => node as INode);
-                var remoteNodes = _remoteNodes.Select(node => node as INode);
+                var localNodes = _localNodes.Select(node => node.Value as INode);
+                var remoteNodes = _remoteNodes.Select(node => node.Value as INode);
                 return new ReadOnlyCollection<INode>(localNodes.Concat(remoteNodes).ToList());
             }
         }
@@ -1167,7 +1166,7 @@ namespace FluentDispatch.Clusters
 
                 if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                 {
-                    _remoteNodes.Add((IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                    var remoteNode = (IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
                         typeof(UnaryParallelDispatcherRemoteNode<TInput>),
                         PersistentCache,
                         Progress,
@@ -1175,11 +1174,12 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                 }
                 else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                 {
-                    _remoteNodes.Add((IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                    var remoteNode = (IUnaryDispatcherRemoteNode<TInput>) Activator.CreateInstance(
                         typeof(UnarySequentialDispatcherRemoteNode<TInput>),
                         PersistentCache,
                         Progress,
@@ -1187,7 +1187,8 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                 }
                 else
                 {
@@ -1199,7 +1200,7 @@ namespace FluentDispatch.Clusters
             {
                 if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                 {
-                    _localNodes.Add((IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                    var localNode = (IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
                         typeof(UnaryParallelDispatcherLocalNode<TInput>),
                         PersistentCache,
                         _funcResolver.GetItemFunc(),
@@ -1207,11 +1208,12 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                 }
                 else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                 {
-                    _localNodes.Add((IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                    var localNode = (IUnaryDispatcherLocalNode<TInput>) Activator.CreateInstance(
                         typeof(UnarySequentialDispatcherLocalNode<TInput>),
                         PersistentCache,
                         _funcResolver.GetItemFunc(),
@@ -1219,7 +1221,8 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                 }
                 else
                 {
@@ -1228,9 +1231,9 @@ namespace FluentDispatch.Clusters
                 }
             }
 
-            _nodeHealthSubscriptions.Add(_localNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_localNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeLocalNodeHealth));
-            _nodeHealthSubscriptions.Add(_remoteNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_remoteNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeRemoteNodeHealth));
         }
 
@@ -1240,17 +1243,8 @@ namespace FluentDispatch.Clusters
         /// <param name="nodeId">Node Id</param>
         public void DeleteNode(Guid nodeId)
         {
-            if (_localNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _localNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _localNodes.Remove(nodeToRemove);
-            }
-
-            if (_remoteNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _remoteNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _remoteNodes.Remove(nodeToRemove);
-            }
+            _localNodes.TryRemove(nodeId, out _);
+            _remoteNodes.TryRemove(nodeId, out _);
         }
 
         /// <summary>
@@ -1266,12 +1260,582 @@ namespace FluentDispatch.Clusters
             {
                 foreach (var node in _localNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
                 }
 
                 foreach (var node in _remoteNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
+                }
+
+                foreach (var nodeHealthSubscription in _nodeHealthSubscriptions)
+                {
+                    nodeHealthSubscription?.Dispose();
+                }
+            }
+
+            Disposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>
+    /// The cluster which is in charge of distributing the load to the configured nodes.
+    /// </summary>
+    /// <typeparam name="TInput"></typeparam>
+    public class DirectCluster<TInput> : ClusterBase, ICluster<TInput>
+    {
+        /// <summary>
+        /// Local nodes of the cluster
+        /// </summary>
+        private readonly ConcurrentDictionary<Guid, IDirectDispatcherLocalNode<TInput>> _localNodes =
+            new ConcurrentDictionary<Guid, IDirectDispatcherLocalNode<TInput>>();
+
+        /// <summary>
+        /// Remote nodes of the cluster
+        /// </summary>
+        private readonly ConcurrentDictionary<Guid, IDirectDispatcherRemoteNode<TInput>> _remoteNodes =
+            new ConcurrentDictionary<Guid, IDirectDispatcherRemoteNode<TInput>>();
+
+        /// <summary>
+        /// Node health subscriptions
+        /// </summary>
+        private readonly ConcurrentBag<IDisposable> _nodeHealthSubscriptions = new ConcurrentBag<IDisposable>();
+
+        /// <summary>
+        /// <see cref="CircuitBreakerOptions"/>
+        /// </summary>
+        private readonly CircuitBreakerOptions _circuitBreakerOptions;
+
+        /// <summary>
+        /// <see cref="FuncResolver{TInput}"/>
+        /// </summary>
+        private readonly FuncResolver<TInput> _funcResolver;
+
+        /// <summary>
+        /// <see cref="DirectCluster{TInput}"/>
+        /// </summary>
+        /// <param name="resolver"><see cref="Resolver{TInput}"/></param>
+        /// <param name="clusterOptions"><see cref="ClusterOptions"/></param>
+        /// <param name="circuitBreakerOptions"><see cref="CircuitBreakerOptions"/></param>
+        /// <param name="progress"><see cref="Progress{TInput}"/></param>
+        /// <param name="cts"><see cref="CancellationTokenSource"/></param>
+        /// <param name="loggerFactory"><see cref="ILoggerFactory"/></param>
+        public DirectCluster(
+            FuncResolver<TInput> resolver,
+            IOptions<ClusterOptions> clusterOptions,
+            IOptions<CircuitBreakerOptions> circuitBreakerOptions,
+            IProgress<double> progress = null,
+            CancellationTokenSource cts = null,
+            ILoggerFactory loggerFactory = null) :
+            this(resolver, progress, cts, clusterOptions.Value, circuitBreakerOptions.Value,
+                loggerFactory)
+        {
+
+        }
+
+        /// <summary>
+        /// <see cref="DirectCluster{TInput}"/>
+        /// </summary>
+        /// <param name="funcResolver">Resolve the action to execute asynchronously for each items when they are dequeued.</param>
+        /// <param name="progress">Progress of the current bulk</param>
+        /// <param name="cts"><see cref="CancellationTokenSource"/></param>
+        /// <param name="clusterOptions"><see cref="ClusterOptions"/></param>
+        /// <param name="circuitBreakerOptions"><see cref="CircuitBreakerOptions"/></param>
+        /// <param name="loggerFactory"><see cref="ILoggerFactory"/></param>
+        private DirectCluster(
+            FuncResolver<TInput> funcResolver,
+            IProgress<double> progress,
+            CancellationTokenSource cts,
+            ClusterOptions clusterOptions,
+            CircuitBreakerOptions circuitBreakerOptions,
+            ILoggerFactory loggerFactory) : base(progress, cts, clusterOptions,
+            loggerFactory == null
+                ? NullLogger<Cluster<TInput>>.Instance
+                : loggerFactory.CreateLogger<Cluster<TInput>>(), loggerFactory)
+        {
+            try
+            {
+                _funcResolver = funcResolver;
+                _circuitBreakerOptions = circuitBreakerOptions;
+                if (ClusterOptions.ExecuteRemotely)
+                {
+                    if (!ClusterOptions.Hosts.Any())
+                    {
+                        throw new FluentDispatchException(
+                            "Hosts must be provided.");
+                    }
+
+                    foreach (var host in ClusterOptions.Hosts)
+                    {
+                        if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
+                        {
+                            var remoteNode = (IDirectDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                                typeof(DirectParallelDispatcherRemoteNode<TInput>),
+                                PersistentCache,
+                                Progress,
+                                host,
+                                CancellationTokenSource,
+                                circuitBreakerOptions,
+                                clusterOptions,
+                                Logger);
+                            _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
+                        }
+                        else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
+                        {
+                            var remoteNode = (IDirectDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                                typeof(DirectSequentialDispatcherRemoteNode<TInput>),
+                                PersistentCache,
+                                Progress,
+                                host,
+                                CancellationTokenSource,
+                                circuitBreakerOptions,
+                                clusterOptions,
+                                Logger);
+                            _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
+                        }
+                        else
+                        {
+                            throw new NotImplementedException(
+                                $"{nameof(ClusterProcessingType)} of value {clusterOptions.ClusterProcessingType.ToString()} is not implemented.");
+                        }
+                    }
+                }
+                else
+                {
+                    for (var i = 0; i < clusterOptions.ClusterSize; i++)
+                    {
+                        if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
+                        {
+                            var localNode = (IDirectDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                                typeof(DirectParallelDispatcherLocalNode<TInput>),
+                                PersistentCache,
+                                funcResolver.GetItemFunc(),
+                                Progress,
+                                CancellationTokenSource,
+                                circuitBreakerOptions,
+                                clusterOptions,
+                                Logger);
+                            _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
+                        }
+                        else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
+                        {
+                            var localNode = (IDirectDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                                typeof(DirectSequentialDispatcherLocalNode<TInput>),
+                                PersistentCache,
+                                funcResolver.GetItemFunc(),
+                                Progress,
+                                CancellationTokenSource,
+                                circuitBreakerOptions,
+                                clusterOptions,
+                                Logger);
+                            _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
+                        }
+                        else
+                        {
+                            throw new NotImplementedException(
+                                $"{nameof(ClusterProcessingType)} of value {clusterOptions.ClusterProcessingType.ToString()} is not implemented.");
+                        }
+                    }
+                }
+
+                foreach (var node in _localNodes)
+                {
+                    _nodeHealthSubscriptions.Add(
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalNodeHealth));
+                }
+
+                foreach (var node in _remoteNodes)
+                {
+                    _nodeHealthSubscriptions.Add(
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteNodeHealth));
+                }
+
+                LogClusterOptions(circuitBreakerOptions, _localNodes.Count + _remoteNodes.Count);
+                var policyResult = Policy.Handle<Exception>().RetryAsync().ExecuteAndCaptureAsync(async () =>
+                {
+                    var persistedItems =
+                        (await PersistentCache.CacheProvider.RetrieveItemsAsync<TInput>()).ToList();
+                    await PersistentCache.CacheProvider.FlushDatabaseAsync();
+                    if (persistedItems.Any())
+                    {
+                        Logger.LogInformation(
+                            "Cluster was shutdown while items remained to be processed. Submitting...");
+                        foreach (var item in persistedItems)
+                        {
+                            Dispatch(item);
+                        }
+
+                        Logger.LogInformation("Remaining items have been successfully processed.");
+                    }
+                }).GetAwaiter().GetResult();
+                if (policyResult.Outcome == OutcomeType.Failure)
+                {
+                    Logger.LogError(
+                        $"Error while processing previously failed items: {policyResult.FinalException?.Message ?? string.Empty}.");
+                }
+
+                Logger.LogInformation("Cluster successfully initialized.");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Compute node health
+        /// </summary>
+        /// <param name="guid">Node identifier</param>
+        private void ComputeLocalNodeHealth(Guid guid)
+        {
+            if (_localNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
+        }
+
+        /// <summary>
+        /// Compute node health
+        /// </summary>
+        /// <param name="guid">Node identifier</param>
+        private void ComputeRemoteNodeHealth(Guid guid)
+        {
+            if (_remoteNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
+        }
+
+        /// <summary>
+        /// Compute cluster health
+        /// </summary>
+        protected override void ComputeClusterHealth()
+        {
+            ClusterMetrics.CurrentThroughput = _localNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput) +
+                                               _remoteNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput);
+            base.ComputeClusterHealth();
+        }
+
+        /// <summary>
+        /// Dispatch an item to the cluster, to be processed by the configured nodes.
+        /// </summary>
+        /// <remarks>
+        /// This won't block the calling thread and this won't never throw any exception.
+        /// A retry and circuit breaker policies will gracefully handle non successful attempts.
+        /// </remarks>
+        /// <param name="item">The item to process</param>
+        public void Dispatch(TInput item)
+        {
+            if (!ClusterOptions.ExecuteRemotely)
+            {
+                if (_localNodes.Any())
+                {
+                    if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
+                    {
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
+                                ? node1
+                                : node2);
+                        node.Value.Dispatch(item);
+                    }
+                    else
+                    {
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        node.Value.Dispatch(item);
+                    }
+                }
+                else
+                {
+                    const string message = "There is no node available for the item to be processed.";
+                    Logger.LogError(message);
+                    throw new FluentDispatchException(message);
+                }
+            }
+            else
+            {
+                var availableNodes = _remoteNodes
+                    .Where(node =>
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
+                    .ToList();
+                if (availableNodes.Any())
+                {
+                    if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
+                    {
+                        var node = availableNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
+                                ? node1
+                                : node2);
+                        node.Value.Dispatch(item);
+                    }
+                    else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
+                    {
+                        var node = availableNodes.ElementAt(Random.Value.Next(0,
+                            availableNodes.Count));
+                        node.Value.Dispatch(item);
+                    }
+                    else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
+                    {
+                        var node = availableNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Any(counter => counter.Key == "CPU Usage") &&
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Any(counter => counter.Key == "CPU Usage") &&
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Single(counter => counter.Key == "CPU Usage").Value <=
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Single(counter => counter.Key == "CPU Usage").Value
+                                ? node1
+                                : node2);
+                        node.Value.Dispatch(item);
+                    }
+                    else
+                    {
+                        throw new NotImplementedException(
+                            $"{nameof(NodeQueuingStrategy)} of value {ClusterOptions.NodeQueuingStrategy.ToString()} is not implemented.");
+                    }
+                }
+                else
+                {
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
+                    {
+                        const string message = "Could not dispatch item, nodes are offline.";
+                        Logger.LogError(message);
+                        throw new FluentDispatchException(message);
+                    }
+                    else
+                    {
+                        const string message = "Could not dispatch item, nodes are full.";
+                        Logger.LogWarning(message);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Dispatch an item to the cluster, to be processed by the configured nodes.
+        /// </summary>
+        /// <remarks>
+        /// This won't block the calling thread and this won't never throw any exception.
+        /// A retry and circuit breaker policies will gracefully handle non successful attempts.
+        /// </remarks>
+        /// <param name="itemProducer">The item producer to process</param>
+        public void Dispatch(Func<TInput> itemProducer)
+        {
+            if (!ClusterOptions.ExecuteRemotely)
+            {
+                if (_localNodes.Any())
+                {
+                    if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
+                    {
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
+                                ? node1
+                                : node2);
+                        node.Value.Dispatch(itemProducer);
+                    }
+                    else
+                    {
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        node.Value.Dispatch(itemProducer);
+                    }
+                }
+                else
+                {
+                    const string message = "There is no node available for the item to be processed.";
+                    Logger.LogError(message);
+                    throw new FluentDispatchException(message);
+                }
+            }
+            else
+            {
+                var availableNodes = _remoteNodes
+                    .Where(node =>
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
+                    .ToList();
+                if (availableNodes.Any())
+                {
+                    if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
+                    {
+                        var node = availableNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
+                                ? node1
+                                : node2);
+                        node.Value.Dispatch(itemProducer);
+                    }
+                    else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
+                    {
+                        var node = availableNodes.ElementAt(Random.Value.Next(0,
+                            availableNodes.Count));
+                        node.Value.Dispatch(itemProducer);
+                    }
+                    else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
+                    {
+                        var node = availableNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Any(counter => counter.Key == "CPU Usage") &&
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Any(counter => counter.Key == "CPU Usage") &&
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Single(counter => counter.Key == "CPU Usage").Value <=
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                                .Single(counter => counter.Key == "CPU Usage").Value
+                                ? node1
+                                : node2);
+                        node.Value.Dispatch(itemProducer);
+                    }
+                    else
+                    {
+                        throw new NotImplementedException(
+                            $"{nameof(NodeQueuingStrategy)} of value {ClusterOptions.NodeQueuingStrategy.ToString()} is not implemented.");
+                    }
+                }
+                else
+                {
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
+                    {
+                        const string message = "Could not dispatch item, nodes are offline.";
+                        Logger.LogError(message);
+                        throw new FluentDispatchException(message);
+                    }
+                    else
+                    {
+                        const string message = "Could not dispatch item, nodes are full.";
+                        Logger.LogWarning(message);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get nodes from the cluster
+        /// </summary>
+        public IReadOnlyCollection<INode> Nodes
+        {
+            get
+            {
+                var localNodes = _localNodes.Select(node => node.Value as INode);
+                var remoteNodes = _remoteNodes.Select(node => node.Value as INode);
+                return new ReadOnlyCollection<INode>(localNodes.Concat(remoteNodes).ToList());
+            }
+        }
+
+        /// <summary>
+        /// Add a node
+        /// </summary>
+        /// <param name="host">Specified host if the node is a remote node</param>
+        public void AddNode(Host host = null)
+        {
+            if (ClusterOptions.ExecuteRemotely)
+            {
+                if (host == null)
+                {
+                    throw new FluentDispatchException(
+                        "Host must be provided.");
+                }
+
+                if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
+                {
+                    var remoteNode = (IDirectDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                        typeof(DirectParallelDispatcherRemoteNode<TInput>),
+                        PersistentCache,
+                        Progress,
+                        host,
+                        CancellationTokenSource,
+                        _circuitBreakerOptions,
+                        ClusterOptions,
+                        Logger);
+                    _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
+                }
+                else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
+                {
+                    var remoteNode = (IDirectDispatcherRemoteNode<TInput>) Activator.CreateInstance(
+                        typeof(DirectSequentialDispatcherRemoteNode<TInput>),
+                        PersistentCache,
+                        Progress,
+                        host,
+                        CancellationTokenSource,
+                        _circuitBreakerOptions,
+                        ClusterOptions,
+                        Logger);
+                    _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
+                }
+                else
+                {
+                    throw new NotImplementedException(
+                        $"{nameof(ClusterProcessingType)} of value {ClusterOptions.ClusterProcessingType.ToString()} is not implemented.");
+                }
+            }
+            else
+            {
+                if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
+                {
+                    var localNode = (IDirectDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                        typeof(DirectParallelDispatcherLocalNode<TInput>),
+                        PersistentCache,
+                        _funcResolver.GetItemFunc(),
+                        Progress,
+                        CancellationTokenSource,
+                        _circuitBreakerOptions,
+                        ClusterOptions,
+                        Logger);
+                    _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
+                }
+                else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
+                {
+                    var localNode = (IDirectDispatcherLocalNode<TInput>) Activator.CreateInstance(
+                        typeof(DirectSequentialDispatcherLocalNode<TInput>),
+                        PersistentCache,
+                        _funcResolver.GetItemFunc(),
+                        Progress,
+                        CancellationTokenSource,
+                        _circuitBreakerOptions,
+                        ClusterOptions,
+                        Logger);
+                    _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
+                }
+                else
+                {
+                    throw new NotImplementedException(
+                        $"{nameof(ClusterProcessingType)} of value {ClusterOptions.ClusterProcessingType.ToString()} is not implemented.");
+                }
+            }
+
+            _nodeHealthSubscriptions.Add(_localNodes.Last().Value.NodeMetrics.RefreshSubject
+                .Subscribe(ComputeLocalNodeHealth));
+            _nodeHealthSubscriptions.Add(_remoteNodes.Last().Value.NodeMetrics.RefreshSubject
+                .Subscribe(ComputeRemoteNodeHealth));
+        }
+
+        /// <summary>
+        /// Delete a node
+        /// </summary>
+        /// <param name="nodeId">Node Id</param>
+        public void DeleteNode(Guid nodeId)
+        {
+            _localNodes.TryRemove(nodeId, out _);
+            _remoteNodes.TryRemove(nodeId, out _);
+        }
+
+        /// <summary>
+        /// Dispose timer
+        /// </summary>
+        /// <param name="disposing"></param>
+        protected override void Dispose(bool disposing)
+        {
+            if (Disposed)
+                return;
+
+            if (disposing)
+            {
+                foreach (var node in _localNodes)
+                {
+                    node.Value?.Dispose();
+                }
+
+                foreach (var node in _remoteNodes)
+                {
+                    node.Value?.Dispose();
                 }
 
                 foreach (var nodeHealthSubscription in _nodeHealthSubscriptions)
@@ -1297,19 +1861,19 @@ namespace FluentDispatch.Clusters
         /// <summary>
         /// Local nodes of the cluster
         /// </summary>
-        private readonly List<IDualDispatcherLocalNode<TInput1, TInput2>> _localNodes =
-            new List<IDualDispatcherLocalNode<TInput1, TInput2>>();
+        private readonly ConcurrentDictionary<Guid, IDualDispatcherLocalNode<TInput1, TInput2>> _localNodes =
+            new ConcurrentDictionary<Guid, IDualDispatcherLocalNode<TInput1, TInput2>>();
 
         /// <summary>
         /// Remote nodes of the cluster
         /// </summary>
-        private readonly List<IDualDispatcherRemoteNode<TInput1, TInput2>> _remoteNodes =
-            new List<IDualDispatcherRemoteNode<TInput1, TInput2>>();
+        private readonly ConcurrentDictionary<Guid, IDualDispatcherRemoteNode<TInput1, TInput2>> _remoteNodes =
+            new ConcurrentDictionary<Guid, IDualDispatcherRemoteNode<TInput1, TInput2>>();
 
         /// <summary>
         /// Node health subscriptions
         /// </summary>
-        private readonly List<IDisposable> _nodeHealthSubscriptions = new List<IDisposable>();
+        private readonly ConcurrentBag<IDisposable> _nodeHealthSubscriptions = new ConcurrentBag<IDisposable>();
 
         /// <summary>
         /// Store the items keys in order to join them on their attributed node
@@ -1449,7 +2013,7 @@ namespace FluentDispatch.Clusters
                     {
                         if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                         {
-                            _remoteNodes.Add((IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
+                            var remoteNode = (IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
                                 typeof(DualParallelDispatcherRemoteNode<TInput1, TInput2, TOutput1, TOutput2>),
                                 PersistentCache,
                                 Progress,
@@ -1457,11 +2021,12 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                         }
                         else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                         {
-                            _remoteNodes.Add((IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
+                            var remoteNode = (IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
                                 typeof(DualSequentialDispatcherRemoteNode<TInput1, TInput2, TOutput1, TOutput2>),
                                 PersistentCache,
                                 Progress,
@@ -1469,7 +2034,8 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                         }
                         else
                         {
@@ -1484,7 +2050,7 @@ namespace FluentDispatch.Clusters
                     {
                         if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                         {
-                            _localNodes.Add((IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
+                            var localNode = (IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
                                 typeof(DualParallelDispatcherLocalNode<TInput1, TInput2, TOutput1, TOutput2>),
                                 PersistentCache,
                                 item1PartialResolver?.GetItemFunc(),
@@ -1494,11 +2060,12 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                         }
                         else if (clusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                         {
-                            _localNodes.Add((IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
+                            var localNode = (IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
                                 typeof(DualSequentialDispatcherLocalNode<TInput1, TInput2, TOutput1, TOutput2>),
                                 PersistentCache,
                                 item1PartialResolver?.GetItemFunc(),
@@ -1508,7 +2075,8 @@ namespace FluentDispatch.Clusters
                                 CancellationTokenSource,
                                 circuitBreakerOptions,
                                 clusterOptions,
-                                Logger));
+                                Logger);
+                            _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                         }
                         else
                         {
@@ -1520,12 +2088,14 @@ namespace FluentDispatch.Clusters
 
                 foreach (var node in _localNodes)
                 {
-                    _nodeHealthSubscriptions.Add(node.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalNodeHealth));
+                    _nodeHealthSubscriptions.Add(
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeLocalNodeHealth));
                 }
 
                 foreach (var node in _remoteNodes)
                 {
-                    _nodeHealthSubscriptions.Add(node.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteNodeHealth));
+                    _nodeHealthSubscriptions.Add(
+                        node.Value.NodeMetrics.RefreshSubject.Subscribe(ComputeRemoteNodeHealth));
                 }
 
                 LogClusterOptions(circuitBreakerOptions, _localNodes.Count + _remoteNodes.Count);
@@ -1571,8 +2141,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeLocalNodeHealth(Guid guid)
         {
-            var node = _localNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_localNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -1581,8 +2151,8 @@ namespace FluentDispatch.Clusters
         /// <param name="guid">Node identifier</param>
         private void ComputeRemoteNodeHealth(Guid guid)
         {
-            var node = _remoteNodes.Single(n => n.NodeMetrics.Id == guid);
-            ComputeNodeHealth(node.NodeMetrics);
+            if (_remoteNodes.TryGetValue(guid, out var node))
+                ComputeNodeHealth(node.NodeMetrics);
         }
 
         /// <summary>
@@ -1590,8 +2160,8 @@ namespace FluentDispatch.Clusters
         /// </summary>
         protected override void ComputeClusterHealth()
         {
-            ClusterMetrics.CurrentThroughput = _localNodes.Sum(node => node.NodeMetrics.CurrentThroughput) +
-                                               _remoteNodes.Sum(node => node.NodeMetrics.CurrentThroughput);
+            ClusterMetrics.CurrentThroughput = _localNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput) +
+                                               _remoteNodes.Sum(node => node.Value.NodeMetrics.CurrentThroughput);
             base.ComputeClusterHealth();
         }
 
@@ -1608,35 +2178,34 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localNodes.ToList();
-                if (availableNodes.Any())
+                if (_localNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = _localNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput1>(key, item, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput1>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput1>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                 }
                 else
@@ -1650,55 +2219,55 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = availableNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput1>(key, item, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput1>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput1>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput1>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
@@ -1708,7 +2277,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -1736,35 +2305,34 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localNodes.ToList();
-                if (availableNodes.Any())
+                if (_localNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = _localNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput2>(key, item, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput2>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput2>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                 }
                 else
@@ -1778,55 +2346,55 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = availableNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput2>(key, item, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput2>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput2>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedItem<TInput2>(key, item, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
@@ -1836,7 +2404,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -1864,35 +2432,34 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localNodes.ToList();
-                if (availableNodes.Any())
+                if (_localNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = _localNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput1>(key, itemProducer, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput1>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput1>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                 }
                 else
@@ -1906,55 +2473,55 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = availableNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput1>(key, itemProducer, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput1>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput1>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput1>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
@@ -1964,7 +2531,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -1992,35 +2559,34 @@ namespace FluentDispatch.Clusters
         {
             if (!ClusterOptions.ExecuteRemotely)
             {
-                var availableNodes = _localNodes.ToList();
-                if (availableNodes.Any())
+                if (_localNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = _localNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput2>(key, itemProducer, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
-                        var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                        var node = _localNodes.Aggregate((node1, node2) =>
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput2>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
-                        var node = availableNodes.ElementAt(Random.Value.Next(0,
-                            availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        var node = _localNodes.ElementAt(Random.Value.Next(0,
+                            _localNodes.Count));
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput2>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                 }
                 else
@@ -2034,55 +2600,55 @@ namespace FluentDispatch.Clusters
             {
                 var availableNodes = _remoteNodes
                     .Where(node =>
-                        node.NodeMetrics.Alive &&
-                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.NodeMetrics.Full))
+                        node.Value.NodeMetrics.Alive &&
+                        (!ClusterOptions.EvictItemsWhenNodesAreFull || !node.Value.NodeMetrics.Full))
                     .ToList();
                 if (availableNodes.Any())
                 {
                     if (_resolverCache.TryGetValue(key, out var value) && value is Guid affinityNodeGuid)
                     {
-                        var node = availableNodes.FirstOrDefault(n => n.NodeMetrics.Id == affinityNodeGuid);
+                        var node = availableNodes.FirstOrDefault(n => n.Value.NodeMetrics.Id == affinityNodeGuid);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput2>(key, itemProducer, persistentCacheToken);
-                        node?.Dispatch(persistentItem);
+                        node.Value?.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.BestEffort)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.TotalItemsProcessed <= node2.NodeMetrics.TotalItemsProcessed
+                            node1.Value.NodeMetrics.TotalItemsProcessed <= node2.Value.NodeMetrics.TotalItemsProcessed
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput2>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Randomized)
                     {
                         var node = availableNodes.ElementAt(Random.Value.Next(0,
                             availableNodes.Count));
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput2>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else if (ClusterOptions.NodeQueuingStrategy == NodeQueuingStrategy.Healthiest)
                     {
                         var node = availableNodes.Aggregate((node1, node2) =>
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Any(counter => counter.Key == "CPU Usage") &&
-                            node1.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node1.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value <=
-                            node2.NodeMetrics.RemoteNodeHealth.PerformanceCounters
+                            node2.Value.NodeMetrics.RemoteNodeHealth.PerformanceCounters
                                 .Single(counter => counter.Key == "CPU Usage").Value
                                 ? node1
                                 : node2);
-                        _resolverCache.Set(key, node.NodeMetrics.Id, _cacheEntryOptions);
+                        _resolverCache.Set(key, node.Value.NodeMetrics.Id, _cacheEntryOptions);
                         var persistentCacheToken = new CancellationTokenSource();
                         var persistentItem = new LinkedFuncItem<TInput2>(key, itemProducer, persistentCacheToken);
-                        node.Dispatch(persistentItem);
+                        node.Value.Dispatch(persistentItem);
                     }
                     else
                     {
@@ -2092,7 +2658,7 @@ namespace FluentDispatch.Clusters
                 }
                 else
                 {
-                    if (_remoteNodes.All(node => !node.NodeMetrics.Alive))
+                    if (_remoteNodes.All(node => !node.Value.NodeMetrics.Alive))
                     {
                         const string message = "Could not dispatch item, nodes are offline.";
                         Logger.LogError(message);
@@ -2114,8 +2680,8 @@ namespace FluentDispatch.Clusters
         {
             get
             {
-                var localNodes = _localNodes.Select(node => node as INode);
-                var remoteNodes = _remoteNodes.Select(node => node as INode);
+                var localNodes = _localNodes.Select(node => node.Value as INode);
+                var remoteNodes = _remoteNodes.Select(node => node.Value as INode);
                 return new ReadOnlyCollection<INode>(localNodes.Concat(remoteNodes).ToList());
             }
         }
@@ -2136,7 +2702,7 @@ namespace FluentDispatch.Clusters
 
                 if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                 {
-                    _remoteNodes.Add((IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
+                    var remoteNode = (IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
                         typeof(DualParallelDispatcherRemoteNode<TInput1, TInput2, TOutput1, TOutput2>),
                         PersistentCache,
                         Progress,
@@ -2144,11 +2710,12 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                 }
                 else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                 {
-                    _remoteNodes.Add((IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
+                    var remoteNode = (IDualDispatcherRemoteNode<TInput1, TInput2>) Activator.CreateInstance(
                         typeof(DualSequentialDispatcherRemoteNode<TInput1, TInput2, TOutput1, TOutput2>),
                         PersistentCache,
                         Progress,
@@ -2156,7 +2723,8 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _remoteNodes.TryAdd(remoteNode.NodeMetrics.Id, remoteNode);
                 }
                 else
                 {
@@ -2168,7 +2736,7 @@ namespace FluentDispatch.Clusters
             {
                 if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Parallel)
                 {
-                    _localNodes.Add((IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
+                    var localNode = (IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
                         typeof(DualParallelDispatcherLocalNode<TInput1, TInput2, TOutput1, TOutput2>),
                         PersistentCache,
                         _item1PartialResolver?.GetItemFunc(),
@@ -2178,11 +2746,12 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                 }
                 else if (ClusterOptions.ClusterProcessingType == ClusterProcessingType.Sequential)
                 {
-                    _localNodes.Add((IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
+                    var localNode = (IDualDispatcherLocalNode<TInput1, TInput2>) Activator.CreateInstance(
                         typeof(DualSequentialDispatcherLocalNode<TInput1, TInput2, TOutput1, TOutput2>),
                         PersistentCache,
                         _item1PartialResolver?.GetItemFunc(),
@@ -2192,7 +2761,8 @@ namespace FluentDispatch.Clusters
                         CancellationTokenSource,
                         _circuitBreakerOptions,
                         ClusterOptions,
-                        Logger));
+                        Logger);
+                    _localNodes.TryAdd(localNode.NodeMetrics.Id, localNode);
                 }
                 else
                 {
@@ -2201,9 +2771,9 @@ namespace FluentDispatch.Clusters
                 }
             }
 
-            _nodeHealthSubscriptions.Add(_localNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_localNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeLocalNodeHealth));
-            _nodeHealthSubscriptions.Add(_remoteNodes.Last().NodeMetrics.RefreshSubject
+            _nodeHealthSubscriptions.Add(_remoteNodes.Last().Value.NodeMetrics.RefreshSubject
                 .Subscribe(ComputeRemoteNodeHealth));
         }
 
@@ -2213,17 +2783,8 @@ namespace FluentDispatch.Clusters
         /// <param name="nodeId">Node Id</param>
         public void DeleteNode(Guid nodeId)
         {
-            if (_localNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _localNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _localNodes.Remove(nodeToRemove);
-            }
-
-            if (_remoteNodes.Any(node => node.NodeMetrics.Id == nodeId))
-            {
-                var nodeToRemove = _remoteNodes.Single(n => n.NodeMetrics.Id == nodeId);
-                _remoteNodes.Remove(nodeToRemove);
-            }
+            _localNodes.TryRemove(nodeId, out _);
+            _remoteNodes.TryRemove(nodeId, out _);
         }
 
         /// <summary>
@@ -2239,12 +2800,12 @@ namespace FluentDispatch.Clusters
             {
                 foreach (var node in _localNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
                 }
 
                 foreach (var node in _remoteNodes)
                 {
-                    node?.Dispose();
+                    node.Value?.Dispose();
                 }
 
                 foreach (var nodeHealthSubscription in _nodeHealthSubscriptions)

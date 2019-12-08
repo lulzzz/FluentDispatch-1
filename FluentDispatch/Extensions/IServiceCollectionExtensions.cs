@@ -57,6 +57,20 @@ namespace FluentDispatch.Extensions
         }
 
         /// <summary>
+        /// Add <see cref="ICluster{TInput}"/> to <see cref="IServiceCollection"/>
+        /// </summary>
+        /// <typeparam name="TInput"></typeparam>
+        /// <param name="services"><see cref="IServiceCollection"/></param>
+        /// <param name="resolver"><see cref="FuncResolver{TInput1}"/></param>
+        public static void AddDirectCluster<TInput>(this IServiceCollection services,
+            Func<IServiceProvider, FuncResolver<TInput>> resolver)
+        {
+            services.TryAddSingleton(resolver);
+            services.TryAddSingleton<ICluster<TInput>, DirectCluster<TInput>>();
+            services.TryAddSingleton<IExposeMetrics>(sp => sp.GetRequiredService<ICluster<TInput>>());
+        }
+
+        /// <summary>
         /// Add <see cref="ICluster{TInput1,TInput2}"/> to <see cref="IServiceCollection"/>
         /// </summary>
         /// <typeparam name="TInput1"></typeparam>

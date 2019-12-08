@@ -32,7 +32,7 @@
 
 # What is it?
 
-**FluentDispatch** is a .NET Standard 2.1 framework which makes easy to scaffold distributed systems and dispatch incoming load into units of work in a deterministic way. This framework is useful whenever you want to process a heavy workload coming from a specific source of data (i.e message broker, web endpoint, ...) in a non-blocking way (fire-and-forget pattern) but still being able to benefit from resiliency features (circuit beaking, back pressure, ...). The framework can be used to dispatch load into units of work **locally** (using .NET Threadpool) or **remotely** (using Remote Procedure Calls).
+**FluentDispatch** is a .NET Standard 2.1 framework which makes easy to scaffold distributed systems and dispatch incoming load into units of work in a deterministic way. This framework is useful whenever you want to process a heavy workload coming from a specific source of data (i.e message broker, web endpoint, ...) in a non-blocking way (fire-and-forget pattern) but still being able to benefit from resiliency features (circuit breaking, back pressure, ...). The framework can be used to dispatch load into units of work **locally** (using .NET Threadpool) or **remotely** (using Remote Procedure Calls).
 
 # Table of Contents
 
