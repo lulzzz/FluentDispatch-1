@@ -11,8 +11,8 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="MagicOnion" Version="2.6.4" />
-    <PackageReference Include="MagicOnion.Hosting" Version="2.6.4" />
+    <PackageReference Include="MagicOnion" Version="3.0.11" />
+    <PackageReference Include="MagicOnion.Hosting" Version="3.0.11" />
   </ItemGroup>
 
   <ItemGroup>
