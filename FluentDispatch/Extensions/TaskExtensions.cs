@@ -6,7 +6,7 @@ namespace FluentDispatch.Extensions
 {
     internal static class TaskExtensions
     {
-        public static async Task WrapTaskForCancellation(this Task task, CancellationToken ct)
+        public static Task WrapTaskForCancellation(this Task task, CancellationToken ct)
         {
             if (ct.CanBeCanceled && !task.IsCompleted)
             {
@@ -18,7 +18,7 @@ namespace FluentDispatch.Extensions
                 else
                 {
                     ct.Register(() => { tcs.TrySetCanceled(); });
-                    await task.ContinueWith(antecedent =>
+                    task.ContinueWith(antecedent =>
                     {
                         if (antecedent.IsFaulted)
                         {
@@ -37,13 +37,13 @@ namespace FluentDispatch.Extensions
                     }, TaskContinuationOptions.ExecuteSynchronously);
                 }
 
-                await tcs.Task;
+                return tcs.Task;
             }
 
-            await task;
+            return task;
         }
 
-        public static async Task<T> WrapTaskForCancellation<T>(this Task<T> task, CancellationToken ct)
+        public static Task<T> WrapTaskForCancellation<T>(this Task<T> task, CancellationToken ct)
         {
             if (ct.CanBeCanceled && !task.IsCompleted)
             {
@@ -55,7 +55,7 @@ namespace FluentDispatch.Extensions
                 else
                 {
                     ct.Register(() => { tcs.TrySetCanceled(); });
-                    await task.ContinueWith(antecedent =>
+                    task.ContinueWith(antecedent =>
                     {
                         if (antecedent.IsFaulted)
                         {
@@ -74,10 +74,10 @@ namespace FluentDispatch.Extensions
                     }, TaskContinuationOptions.ExecuteSynchronously);
                 }
 
-                return await tcs.Task;
+                return tcs.Task;
             }
 
-            return await task;
+            return task;
         }
     }
 }
